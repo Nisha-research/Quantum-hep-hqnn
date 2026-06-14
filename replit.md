@@ -1,45 +1,54 @@
-# [Project name]
+# QML for High-Energy Physics
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Interactive Final Year Project: Hybrid Classical-Quantum Neural Network (HQNN) for classifying simulated CERN particle collision events.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `streamlit run main.py --server.port 5000` — launch the dashboard
+- The workflow "Start application" is already configured and auto-starts.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.11
+- PennyLane 0.45 — quantum circuit simulation (`default.qubit`)
+- TensorFlow 2.21 — Keras model training
+- Streamlit 1.58 — interactive web dashboard
+- Matplotlib, NumPy, scikit-learn
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `data_generator.py` — synthetic CERN particle track image generator (28×28 grayscale)
+- `quantum_model.py` — HQNN architecture (CNN + 4-qubit PQC) and classical CNN benchmark
+- `trainer.py`        — training loop, Streamlit live-callback, experiment runner
+- `main.py`           — Streamlit dashboard (4 sections: gallery, training, benchmarks, report)
+- `.streamlit/config.toml` — Streamlit server config (port 5000, headless)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Angle Encoding (RX gates) maps CNN tanh output [−1,1] to qubit rotations: hardware-efficient and preserves feature range.
+- Rot + CNOT ring ansatz (L=2 layers) balances expressibility vs. barren-plateau risk.
+- Only PauliZ(qubit 0) is measured (local observable) to further mitigate barren plateaus.
+- Classical CNN pre-processes 784→4 dimensions before the quantum circuit, keeping QPU load minimal.
+- `default.qubit` CPU simulator requires no real QPU — fully self-contained on Replit.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Section 1** — Visual gallery of signal (helicoidal tracks) vs. noise (random deposits)
+- **Section 2** — Live training progress bar + loss/accuracy curves updated per epoch
+- **Section 3** — Benchmark table: HQNN vs Classical CNN (accuracy, precision, time)
+- **Section 4** — Technical engineering report (NISQ era, embedding, barren plateaus)
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_Populate as needed._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Keep dataset ≤ 100 and epochs ≤ 10 for fast runs; quantum simulation is CPU-bound.
+- TF graph compilation on first training run adds ~10–20 s overhead.
+- `st.rerun()` must be used instead of the deprecated `experimental_rerun`.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- PennyLane docs: https://pennylane.ai/
+- CERN TrackML dataset: https://www.kaggle.com/c/trackml-particle-identification

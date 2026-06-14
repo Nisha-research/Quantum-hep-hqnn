@@ -1,0 +1,13 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib>=3.11.0",
+    "numpy>=2.4.6",
+    "pennylane>=0.45.0",
+    "scikit-learn>=1.9.0",
+    "streamlit>=1.58.0",
+    "tensorflow>=2.21.0",
+]

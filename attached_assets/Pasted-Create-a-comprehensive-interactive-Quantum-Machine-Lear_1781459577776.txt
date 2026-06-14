@@ -1,0 +1,35 @@
+Create a comprehensive, interactive "Quantum Machine Learning for High-Energy Physics" Final Year Project. This application will simulate CERN particle track data and classify collision events using a Hybrid Classical-Quantum Neural Network (HQNN). 
+
+The application must be completely self-contained, highly visual, and optimized to run smoothly within a standard Replit workspace container.
+
+Please build and structure the project with the following requirements:
+
+1. DEPENDENCIES & ENVIRONMENT SETUP:
+   - Configure the environment and install necessary packages: pennylane, tensorflow, streamlit, matplotlib, and numpy.
+
+2. SYNTHETIC CERN DATA GENERATOR (`data_generator.py`):
+   - Create a script that generates synthetic 2D representations of particle detector tracks (28x28 grayscale images) modeled after the CERN TrackML dataset.
+   - Class 0 (Signal Event): Smooth, curved helicoidal particle tracks originating from the center (simulating an electron or muon trajectory).
+   - Class 1 (Background Noise): Scattered, random, uncorrelated energy deposits (simulating thermal or detector background noise).
+
+3. HYBRID QUANTUM MODEL CONSTRUCTION (`quantum_model.py`):
+   - Build a hybrid architecture using TensorFlow Keras and PennyLane.
+   - Classical Feature Extractor: A lightweight CNN (Conv2D -> MaxPooling -> Flatten -> Dense) that takes the 28x28 tracking image and compresses it into a 4-dimensional vector using a 'tanh' activation.
+   - Quantum Variational Classifier: A 4-qubit quantum simulator circuit ('default.qubit'). Use Angle Encoding (RX gates) to map the 4 classical dimensions to the qubits. Apply a Parameterized Quantum Circuit (PQC) with StronglyEntanglingLayers or custom rotation (Rot) and CNOT entanglement gates. 
+   - Output Layer: Measure the PauliZ expectation value on the first qubit, piped through a Sigmoid activation for binary classification (Signal vs. Noise).
+
+4. MODEL TRAINING & COMPARISON (`trainer.py`):
+   - Write a module to train the hybrid model. Include a simple classical-only CNN counterpart of equivalent parameter size for direct benchmark comparisons.
+
+5. WEB-BASED INTERACTIVE DASHBOARD (`main.py`):
+   - Build an impressive web interface using Streamlit so I can present this live to project evaluators.
+   - Sidebar: Allow users to adjust hyperparameters (Number of training epochs, learning rate, and dataset size) and feature a "Train Model" button.
+   - Main Panel - Section 1 (Data Preview): Display a grid gallery of the simulated particle tracks so evaluators can visually distinguish between a clean helicoidal signal and background noise.
+   - Main Panel - Section 2 (Training Dashboard): Show a live progress bar and plot real-time training/validation accuracy and loss curves using Matplotlib or Streamlit charts.
+   - Main Panel - Section 3 (Quantum Benchmarks): Display a comparative performance table (Accuracy, Precision, Training Time) pitting the Hybrid QNN against the purely Classical CNN.
+   - Main Panel - Section 4 (Engineering Report): Add a text section explaining technical concepts like the NISQ era, quantum embedding, and mitigating barren plateaus.
+
+6. CONFIGURATION:
+   - Provide a clean entry point via a .replit configuration file or a clear instruction on how to launch the Streamlit server using `streamlit run main.py`.
+
+Ensure all code is thoroughly commented, modular, handles exceptions gracefully, and features a professional layout suitable for an academic final year engineering presentation.
