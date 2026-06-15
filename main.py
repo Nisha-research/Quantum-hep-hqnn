@@ -82,50 +82,221 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 st.header("🔬 Section 1 — Simulated Particle Track Gallery")
 
-with st.expander("View detector image gallery", expanded=True):
+st.markdown(
+    "Each image is a **28 × 28 pixel synthetic detector readout** modelled after the "
+    "[CERN TrackML dataset](https://www.kaggle.com/c/trackml-particle-identification). "
+    "Pixel brightness represents the **energy deposited** in a detector cell — bright "
+    "yellow/white = high energy hit, dark purple/black = no hit. "
+    "The HQNN must learn to separate the two classes below."
+)
+
+with st.expander("📷 View annotated detector image gallery", expanded=True):
     try:
         generate_dataset, generate_sample, StreamlitProgressCallback, run_experiment = (
             _import_modules()
         )
 
-        cols_per_row = 8
-        fig_prev, axes = plt.subplots(
-            2, cols_per_row,
-            figsize=(cols_per_row * 1.6, 3.8),
+        # ── Legend / colour-scale explanation ────────────────────────────────
+        leg_col1, leg_col2, leg_col3, leg_col4 = st.columns(4)
+        leg_col1.metric("⬛ Black pixel", "No hit", "0 energy deposited")
+        leg_col2.metric("🟣 Purple pixel", "Weak hit", "Low energy deposit")
+        leg_col3.metric("🟠 Orange pixel", "Medium hit", "Moderate energy")
+        leg_col4.metric("🟡 Yellow pixel", "Strong hit", "High energy deposit")
+
+        st.divider()
+
+        # ── Part A: Large annotated side-by-side comparison ──────────────────
+        st.subheader("A — Annotated Reference Examples")
+        st.caption(
+            "One canonical signal event and one canonical background event "
+            "with key features labelled."
+        )
+
+        sig_img  = generate_sample(label=0, seed=7)
+        bg_img   = generate_sample(label=1, seed=3)
+
+        fig_ann, (ax_s, ax_b) = plt.subplots(
+            1, 2, figsize=(10, 5), facecolor="#0e1117"
+        )
+
+        # — Signal panel —
+        im_s = ax_s.imshow(sig_img, cmap="inferno", vmin=0, vmax=1)
+        ax_s.set_title("[CLASS 0]  Signal Event\n(Helicoidal Particle Track)",
+                        color="#00ff88", fontsize=11, fontweight="bold", pad=10)
+        ax_s.set_xlabel("Detector column (pixel)", color="#aaaaaa", fontsize=8)
+        ax_s.set_ylabel("Detector row (pixel)", color="#aaaaaa", fontsize=8)
+        ax_s.tick_params(colors="#aaaaaa", labelsize=7)
+        for spine in ax_s.spines.values():
+            spine.set_edgecolor("#555555")
+
+        # Annotations on signal image
+        cx, cy = 14, 14   # approximate centre
+        ax_s.annotate(
+            "Interaction\nvertex\n(origin)",
+            xy=(cx, cy), xytext=(2, 3),
+            color="cyan", fontsize=7, fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="cyan", lw=1.2),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#001a1a", ec="cyan", alpha=0.8),
+        )
+        ax_s.annotate(
+            "Helicoidal\ncurvature\n(B-field effect)",
+            xy=(20, 8), xytext=(17, 0),
+            color="lime", fontsize=7, fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="lime", lw=1.2),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#001a00", ec="lime", alpha=0.8),
+        )
+        ax_s.annotate(
+            "Detector\nsmearing\n(finite resolution)",
+            xy=(22, 18), xytext=(15, 24),
+            color="orange", fontsize=7,
+            arrowprops=dict(arrowstyle="->", color="orange", lw=1.0),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#1a0a00", ec="orange", alpha=0.8),
+        )
+
+        # Colorbar for signal
+        cbar_s = fig_ann.colorbar(im_s, ax=ax_s, fraction=0.046, pad=0.04)
+        cbar_s.set_label("Pixel energy (normalised)", color="#aaaaaa", fontsize=7)
+        cbar_s.ax.yaxis.set_tick_params(color="#aaaaaa", labelsize=6)
+        plt.setp(cbar_s.ax.yaxis.get_ticklabels(), color="#aaaaaa")
+
+        # — Background panel —
+        im_b = ax_b.imshow(bg_img, cmap="inferno", vmin=0, vmax=1)
+        ax_b.set_title("[CLASS 1]  Background Noise\n(Uncorrelated Energy Deposits)",
+                        color="#ff4444", fontsize=11, fontweight="bold", pad=10)
+        ax_b.set_xlabel("Detector column (pixel)", color="#aaaaaa", fontsize=8)
+        ax_b.set_ylabel("Detector row (pixel)", color="#aaaaaa", fontsize=8)
+        ax_b.tick_params(colors="#aaaaaa", labelsize=7)
+        for spine in ax_b.spines.values():
+            spine.set_edgecolor("#555555")
+
+        # Annotations on background image
+        ax_b.annotate(
+            "Isolated hit\n(no track structure)",
+            xy=(5, 5), xytext=(8, 1),
+            color="red", fontsize=7, fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="red", lw=1.2),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#1a0000", ec="red", alpha=0.8),
+        )
+        ax_b.annotate(
+            "Random\ndeposits\n(no spatial order)",
+            xy=(18, 22), xytext=(10, 25),
+            color="yellow", fontsize=7, fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="yellow", lw=1.2),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#1a1a00", ec="yellow", alpha=0.8),
+        )
+        ax_b.annotate(
+            "No origin\npoint",
+            xy=(24, 10), xytext=(18, 6),
+            color="violet", fontsize=7,
+            arrowprops=dict(arrowstyle="->", color="violet", lw=1.0),
+            bbox=dict(boxstyle="round,pad=0.2", fc="#0d001a", ec="violet", alpha=0.8),
+        )
+
+        cbar_b = fig_ann.colorbar(im_b, ax=ax_b, fraction=0.046, pad=0.04)
+        cbar_b.set_label("Pixel energy (normalised)", color="#aaaaaa", fontsize=7)
+        cbar_b.ax.yaxis.set_tick_params(color="#aaaaaa", labelsize=6)
+        plt.setp(cbar_b.ax.yaxis.get_ticklabels(), color="#aaaaaa")
+
+        fig_ann.tight_layout()
+        st.pyplot(fig_ann)
+        plt.close(fig_ann)
+
+        # — Explanation columns under annotated images —
+        info_l, info_r = st.columns(2)
+        with info_l:
+            st.info(
+                "**Class 0 — Signal Event ✅**\n\n"
+                "- Track **originates at the interaction vertex** (detector centre)\n"
+                "- **Curved trajectory** caused by the solenoidal magnetic field "
+                "(Lorentz force on a charged particle)\n"
+                "- Hits are **spatially connected** and follow a smooth helix\n"
+                "- Detector smearing broadens each hit by ~0.5–1 pixel\n"
+                "- Simulates: electron, muon, or pion tracks from a proton–proton collision"
+            )
+        with info_r:
+            st.warning(
+                "**Class 1 — Background Noise ❌**\n\n"
+                "- Hits are **randomly distributed** across the full detector plane\n"
+                "- **No spatial correlation** between deposits\n"
+                "- **No origin point** — hits do not trace a continuous path\n"
+                "- Variable intensities with no structure\n"
+                "- Simulates: thermal noise, detector cross-talk, or soft pile-up "
+                "from secondary interactions"
+            )
+
+        st.divider()
+
+        # ── Part B: Variety grid — 6 signal + 6 noise ────────────────────────
+        st.subheader("B — Variety Grid: 6 Signal vs 6 Background Examples")
+        st.caption(
+            "Each column shows a distinct generated event. "
+            "Notice that **every signal image** has a curved track from the centre, "
+            "while **every noise image** looks like random confetti — no shared structure."
+        )
+
+        n_each = 6
+        fig_grid, axes_grid = plt.subplots(
+            2, n_each,
+            figsize=(n_each * 2.2, 5),
             facecolor="#0e1117",
         )
-        fig_prev.suptitle(
-            "Row 1: Signal Events (helicoidal tracks)   |   "
-            "Row 2: Background Noise (random deposits)",
-            color="white", fontsize=10, y=1.01,
-        )
 
-        for col in range(cols_per_row):
-            for row, label in enumerate([0, 1]):
-                seed_val = col + label * cols_per_row + 100
+        row_labels = ["[0] SIGNAL\n(Helicoidal Track)", "[1] NOISE\n(Random Deposits)"]
+        row_colors = ["#00ff88", "#ff4444"]
+
+        for row_idx, (label, row_color) in enumerate(zip([0, 1], row_colors)):
+            for col_idx in range(n_each):
+                seed_val = col_idx * 7 + row_idx * 31 + 200
                 img = generate_sample(label=label, seed=seed_val)
-                ax  = axes[row, col]
+                ax  = axes_grid[row_idx, col_idx]
                 ax.imshow(img, cmap="inferno", vmin=0, vmax=1)
-                ax.axis("off")
-
-        fig_prev.tight_layout()
-        st.pyplot(fig_prev)
-        plt.close(fig_prev)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(
-                "**Class 0 — Signal Event** ✅\n\n"
-                "Smooth helicoidal track originating from the interaction vertex "
-                "(centre). Simulates the trajectory of a charged particle (e.g. "
-                "electron or muon) curving under the solenoidal magnetic field."
+                ax.set_xticks([])
+                ax.set_yticks([])
+                for spine in ax.spines.values():
+                    spine.set_edgecolor(row_color)
+                    spine.set_linewidth(2)
+                ax.set_title(
+                    f"{'Signal' if label == 0 else 'Noise'} #{col_idx + 1}",
+                    color=row_color, fontsize=8, pad=3,
+                )
+            # Row label on the left
+            axes_grid[row_idx, 0].set_ylabel(
+                row_labels[row_idx], color=row_color,
+                fontsize=9, fontweight="bold", labelpad=6,
             )
-        with col2:
-            st.warning(
-                "**Class 1 — Background Noise** ❌\n\n"
-                "Uncorrelated, randomly scattered energy deposits with no spatial "
-                "structure. Simulates thermal noise, detector cross-talk, or "
-                "pile-up from soft-QCD interactions."
+
+        fig_grid.suptitle(
+            "Inferno colormap:  ■ Black = no energy   ■ Purple = low   "
+            "■ Orange = medium   ■ Yellow = high energy",
+            color="#aaaaaa", fontsize=8, y=0.02,
+        )
+        fig_grid.tight_layout(rect=[0, 0.05, 1, 1])
+        st.pyplot(fig_grid)
+        plt.close(fig_grid)
+
+        # ── Part C: Key visual differences summary ────────────────────────────
+        st.subheader("C — How to Visually Distinguish the Two Classes")
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            st.markdown(
+                "**🎯 Track Origin**\n\n"
+                "Signal events always show hits **converging toward the centre** of the "
+                "detector (the interaction vertex). Noise events have hits scattered "
+                "uniformly across the entire 28×28 grid with no preferred origin."
+            )
+        with d2:
+            st.markdown(
+                "**〰️ Spatial Continuity**\n\n"
+                "Signal hits form a **connected, curved path** — you can trace the "
+                "particle's trajectory from pixel to pixel. Noise hits are isolated "
+                "deposits with no neighbour relationship."
+            )
+        with d3:
+            st.markdown(
+                "**🌀 Curvature Pattern**\n\n"
+                "The magnetic field causes signal tracks to follow a **helical arc** "
+                "(tight or loose depending on momentum). Background deposits show no "
+                "curvature — they are statistically independent random events."
             )
 
     except Exception as exc:

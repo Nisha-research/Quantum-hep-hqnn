@@ -121,15 +121,19 @@ class QuantumLayer(tf.keras.layers.Layer):
         -------
         tf.Tensor, shape (batch, 1)
         """
-        # Process each sample individually (QNode does not natively batch)
+        # Process each sample individually via tf.map_fn.
+        # fn_output_signature must be a plain TensorSpec (not Ragged) so that
+        # TF can stack the per-sample scalars into a dense (batch, 1) tensor.
         results = tf.map_fn(
             lambda x: tf.expand_dims(
-                _quantum_circuit(x, self.q_weights), axis=0
+                tf.cast(_quantum_circuit(x, self.q_weights), tf.float32),
+                axis=0,
             ),
             inputs,
-            fn_output_signature=tf.RaggedTensorSpec(shape=[1], dtype=tf.float32),
+            fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float32),
         )
-        return tf.reshape(results.flat_values, (-1, 1))
+        # results has shape (batch, 1) — no reshape needed
+        return results
 
     def get_config(self):
         config = super().get_config()
