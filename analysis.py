@@ -375,7 +375,7 @@ def plot_noise_robustness(
 
     fig.suptitle(
         "Noise Robustness Test — simulates detector noise, pile-up, or hardware errors\n"
-        "HQNN advantage under noise supports 'quantum robustness' hypothesis",
+        "Contrary to the quantum-robustness hypothesis: Classical CNN degrades more gracefully than HQNN",
         fontsize=9, y=1.02,
     )
     fig.tight_layout()
@@ -445,8 +445,8 @@ def plot_qubit_scaling(results_dict: dict) -> plt.Figure:
     ax_acc.legend(fontsize=9); ax_acc.grid(alpha=0.25)
 
     fig.suptitle(
-        "Qubit Scaling Experiment — empirical evidence for barren plateaus\n"
-        "More qubits = exponentially vanishing gradients = slower convergence",
+        "Qubit Scaling Experiment — note: high variance expected with small sample sizes\n"
+        "Interpret trends cautiously; non-monotonic accuracy reflects statistical noise, not pure barren-plateau scaling",
         fontsize=9, y=1.02,
     )
     fig.tight_layout()

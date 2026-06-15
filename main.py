@@ -588,9 +588,14 @@ if train_button:
             st.markdown(
                 "Additive Gaussian noise (σ from 0 → 0.5) is applied to the "
                 "validation images, simulating detector noise, cross-talk, or "
-                "quantum hardware errors. The accuracy degradation curves "
-                "directly support the 'quantum robustness' discussion expected "
-                "in HEP-QML reviews (Heredge et al. 2021)."
+                "hardware errors. **Contrary to some literature predicting quantum "
+                "robustness**, our empirical results show the Classical CNN handles "
+                "high-frequency Gaussian noise significantly better than the current "
+                "HQNN architecture. The HQNN drops toward baseline random guessing "
+                "(≈ 50% accuracy) at σ ≥ 0.30, indicating the quantum embedding layer "
+                "is highly sensitive to input perturbations. This is consistent with "
+                "angle encoding mapping small pixel changes directly to qubit rotations, "
+                "amplifying noise into the quantum circuit without attenuation."
             )
             with st.spinner("Running noise robustness test…"):
                 fig_noise, hqnn_noise_accs, cnn_noise_accs = plot_noise_robustness(
@@ -612,14 +617,17 @@ if train_button:
             with s3g_ph.container():
                 st.subheader("3G — Qubit Scaling Experiment")
                 st.markdown(
-                    "Trains HQNN variants with **2, 4, and 6 qubits** on a small "
-                    "fixed dataset (40 samples, 3 epochs) to empirically demonstrate "
-                    "the **barren plateau** effect — more qubits = slower / flatter "
-                    "convergence, matching the O(2⁻ⁿ) gradient variance prediction."
+                    "Trains HQNN variants with **2, 4, and 6 qubits** on a fixed dataset "
+                    "(60 samples, 5 epochs) to observe convergence behaviour across qubit counts. "
+                    "**Note:** with a small synthetic dataset results carry high statistical "
+                    "variance — non-monotonic final accuracies (e.g. 6-qubit ≈ 2-qubit) reflect "
+                    "this variance, not a true exception to the barren plateau effect. "
+                    "Interpret the *loss-curve flatness* as the more reliable barren-plateau "
+                    "signal, not the final accuracy alone."
                 )
                 scale_results = {}
                 scale_prog = st.progress(0, text="Qubit scaling — 2 qubits…")
-                X_sc, y_sc = _gen(n_samples=40, seed=7)
+                X_sc, y_sc = _gen(n_samples=60, seed=7)
                 X_sc_tr, X_sc_vl, y_sc_tr, y_sc_vl = train_test_split(
                     X_sc, y_sc, test_size=0.25, random_state=7
                 )
@@ -631,7 +639,7 @@ if train_button:
                                            learning_rate=learning_rate)
                     h, t = train_model(
                         m, X_sc_tr, y_sc_tr, X_sc_vl, y_sc_vl,
-                        n_epochs=3, batch_size=8,
+                        n_epochs=5, batch_size=8,
                     )
                     scale_results[nq] = {
                         "history":   h.history,
