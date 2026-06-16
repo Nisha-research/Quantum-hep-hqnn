@@ -14,6 +14,8 @@ plot_embedding_pca         — PCA of the Dense(4, tanh) feature space
 plot_classification_demo   — per-event grid with prediction + confidence
 plot_noise_robustness      — accuracy vs Gaussian noise level
 plot_qubit_scaling         — loss / accuracy for 2, 4, 6 qubit circuits
+plot_bloch_spheres         — 3D Bloch sphere: signal vs noise qubit states
+plot_entanglement_map      — 4×4 quantum mutual information heatmap
 """
 
 import numpy as np
@@ -450,3 +452,334 @@ def plot_qubit_scaling(results_dict: dict) -> plt.Figure:
     )
     fig.tight_layout()
     return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Bloch Sphere Visualisation — "Visualise the Quantum Brain"
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_bloch_spheres(
+    hqnn_model: tf.keras.Model,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    max_samples_per_class: int = 12,
+) -> plt.Figure:
+    """
+    For each qubit, plot a 3D Bloch sphere showing where signal-event and
+    background-event quantum states land after the full PQC.
+
+    The Bloch vector (⟨X⟩, ⟨Y⟩, ⟨Z⟩) of each qubit is measured via a
+    separate diagnostic QNode that runs the same encoding + ansatz but
+    measures all three Pauli expectation values.  No TF gradients are
+    needed — this is a pure forward-pass analysis circuit.
+
+    Parameters
+    ----------
+    hqnn_model           : trained HQNN (must contain a "quantum_layer"
+                           with a `q_weights` tf.Variable)
+    X_val                : validation images, shape (N, 28, 28, 1)
+    y_val                : true labels, shape (N,)
+    max_samples_per_class: how many events per class to plot (keeps it fast)
+
+    Returns
+    -------
+    plt.Figure
+    """
+    import pennylane as qml
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    # ── Extract trained weights ───────────────────────────────────────────
+    q_weights_tf = hqnn_model.get_layer("quantum_layer").q_weights
+    q_weights = q_weights_tf.numpy()          # (N_LAYERS, N_QUBITS, 3)
+    n_layers, n_qubits, _ = q_weights.shape
+
+    # ── Build embedding sub-model ─────────────────────────────────────────
+    embed_model = tf.keras.Model(
+        inputs=hqnn_model.input,
+        outputs=hqnn_model.get_layer("embedding").output,
+    )
+
+    # Sample up to max_samples_per_class events of each class
+    sig_idx   = np.where(y_val == 0)[0][:max_samples_per_class]
+    noise_idx = np.where(y_val == 1)[0][:max_samples_per_class]
+    sel_idx   = np.concatenate([sig_idx, noise_idx])
+    sel_labels = y_val[sel_idx]
+
+    embeddings = embed_model.predict(X_val[sel_idx], verbose=0)  # (N, 4)
+
+    # ── Diagnostic circuit — measures Bloch vector for every qubit ────────
+    dev_diag = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev_diag)
+    def _bloch_circuit(inputs, weights):
+        for i in range(n_qubits):
+            qml.RX(np.pi * inputs[i], wires=i)
+        for layer in range(n_layers):
+            for q in range(n_qubits):
+                qml.Rot(
+                    weights[layer, q, 0],
+                    weights[layer, q, 1],
+                    weights[layer, q, 2],
+                    wires=q,
+                )
+            for q in range(n_qubits):
+                qml.CNOT(wires=[q, (q + 1) % n_qubits])
+        # Return all 3 Paulis for every qubit in one shot
+        return (
+            qml.expval(qml.PauliX(0)), qml.expval(qml.PauliX(1)),
+            qml.expval(qml.PauliX(2)), qml.expval(qml.PauliX(3)),
+            qml.expval(qml.PauliY(0)), qml.expval(qml.PauliY(1)),
+            qml.expval(qml.PauliY(2)), qml.expval(qml.PauliY(3)),
+            qml.expval(qml.PauliZ(0)), qml.expval(qml.PauliZ(1)),
+            qml.expval(qml.PauliZ(2)), qml.expval(qml.PauliZ(3)),
+        )
+
+    # Compute Bloch vectors for all selected samples
+    bloch = []
+    for emb in embeddings:
+        raw = np.array(_bloch_circuit(emb.astype(float), q_weights), dtype=float)
+        # raw: [X0..X3, Y0..Y3, Z0..Z3] → shape (3, n_qubits)
+        bloch.append(raw.reshape(3, n_qubits))
+    bloch = np.array(bloch)   # (N_sel, 3, n_qubits)
+
+    sig_mask   = sel_labels == 0
+    noise_mask = sel_labels == 1
+
+    # ── Draw ─────────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(5 * n_qubits, 5), facecolor="#0e1117")
+    qubit_labels = [f"Qubit {q}" for q in range(n_qubits)]
+
+    for q in range(n_qubits):
+        ax = fig.add_subplot(1, n_qubits, q + 1, projection="3d")
+        ax.set_facecolor("#0e1117")
+
+        # Wire-frame sphere
+        u = np.linspace(0, 2 * np.pi, 36)
+        v = np.linspace(0, np.pi, 18)
+        xs = np.outer(np.cos(u), np.sin(v))
+        ys = np.outer(np.sin(u), np.sin(v))
+        zs = np.outer(np.ones(u.shape), np.cos(v))
+        ax.plot_wireframe(xs, ys, zs, color="#444444", lw=0.4, alpha=0.5)
+
+        # Axes arrows
+        for start, end, label, pos in [
+            ([0, 0, -1.4], [0, 0, 1.4], "|0⟩", (0, 0, 1.5)),
+            ([0, 0, 1.4],  [0, 0, -1.4], "|1⟩", (0, 0, -1.7)),
+            ([-1.4, 0, 0], [1.4, 0, 0], "|+⟩", (1.6, 0, 0)),
+            ([0, -1.4, 0], [0, 1.4, 0], "|i⟩", (0, 1.6, 0)),
+        ]:
+            ax.quiver(*start[:3], *(np.array(end) - np.array(start)),
+                      color="#666666", alpha=0.5, arrow_length_ratio=0.12,
+                      lw=0.8, length=1)
+            ax.text(*pos, label, color="#888888", fontsize=7, ha="center")
+
+        # Scatter: signal
+        ax.scatter(
+            bloch[sig_mask,   0, q],
+            bloch[sig_mask,   1, q],
+            bloch[sig_mask,   2, q],
+            c="#00ff88", s=40, alpha=0.85, edgecolors="white",
+            linewidths=0.3, label="Signal", zorder=6,
+        )
+        # Scatter: noise
+        ax.scatter(
+            bloch[noise_mask, 0, q],
+            bloch[noise_mask, 1, q],
+            bloch[noise_mask, 2, q],
+            c="#ff4444", s=40, alpha=0.85, edgecolors="white",
+            linewidths=0.3, label="Noise", zorder=6,
+        )
+
+        ax.set_title(qubit_labels[q], color="white", fontsize=10,
+                     fontweight="bold", pad=6)
+        ax.set_xlim([-1.3, 1.3])
+        ax.set_ylim([-1.3, 1.3])
+        ax.set_zlim([-1.3, 1.3])
+        ax.set_xlabel("⟨X⟩", color="#888888", fontsize=7, labelpad=1)
+        ax.set_ylabel("⟨Y⟩", color="#888888", fontsize=7, labelpad=1)
+        ax.set_zlabel("⟨Z⟩", color="#888888", fontsize=7, labelpad=1)
+        ax.tick_params(colors="#555555", labelsize=5)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.xaxis.pane.set_edgecolor("#222222")
+        ax.yaxis.pane.set_edgecolor("#222222")
+        ax.zaxis.pane.set_edgecolor("#222222")
+
+        if q == 0:
+            ax.legend(fontsize=8, loc="upper left",
+                      labelcolor="white", facecolor="#111111",
+                      edgecolor="#444444")
+
+    fig.suptitle(
+        "Bloch Sphere Visualisation — Qubit State Distribution After Full PQC\n"
+        "Green = Signal event  |  Red = Background noise  |  Each sphere = one qubit",
+        color="white", fontsize=10, y=1.01,
+    )
+    fig.tight_layout()
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Entanglement Strength Map — Quantum Mutual Information Heatmap
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _partial_trace(state_vec: np.ndarray, keep: list, n: int) -> np.ndarray:
+    """
+    Compute the reduced density matrix by tracing out all qubits NOT in `keep`.
+
+    Parameters
+    ----------
+    state_vec : complex ndarray, shape (2**n,)
+    keep      : list of qubit indices to retain (0-indexed)
+    n         : total number of qubits
+
+    Returns
+    -------
+    rho : complex ndarray, shape (2**len(keep), 2**len(keep))
+    """
+    state = state_vec.reshape([2] * n)
+    other = [q for q in range(n) if q not in keep]
+    perm = list(keep) + other
+    state = np.transpose(state, perm)
+    dk = 2 ** len(keep)
+    do = 2 ** (n - len(keep))
+    sf = state.reshape(dk, do)
+    return sf @ sf.conj().T
+
+
+def _von_neumann_entropy(rho: np.ndarray) -> float:
+    """Von Neumann entropy S = −Tr(ρ log₂ ρ) in bits."""
+    ev = np.linalg.eigvalsh(rho).real
+    ev = ev[ev > 1e-14]
+    if len(ev) == 0:
+        return 0.0
+    return float(-np.sum(ev * np.log2(ev)))
+
+
+def plot_entanglement_map(
+    hqnn_model: tf.keras.Model,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    max_samples: int = 16,
+) -> plt.Figure:
+    """
+    Compute and visualise the Quantum Mutual Information (QMI) matrix.
+
+    For every pair of qubits (i, j), QMI is defined as:
+        I(i:j) = S(ρᵢ) + S(ρⱼ) − S(ρᵢⱼ)
+    where S is the Von Neumann entropy and ρᵢⱼ is the two-qubit reduced
+    density matrix obtained by tracing out the other qubits.
+
+    Diagonal entries show the single-qubit entanglement entropy (how
+    entangled qubit i is with the rest of the register).
+
+    Values are averaged over `max_samples` validation events.  Brighter
+    cells mean stronger quantum correlations — direct evidence that the
+    CNOT ring has created genuine entanglement between the qubits.
+
+    Parameters
+    ----------
+    hqnn_model  : trained HQNN
+    X_val       : validation images
+    y_val       : true labels
+    max_samples : number of samples to average over (keeps runtime fast)
+
+    Returns
+    -------
+    (fig, mi_matrix_signal, mi_matrix_noise) — Figure + raw data for both classes
+    """
+    import pennylane as qml
+
+    q_weights = hqnn_model.get_layer("quantum_layer").q_weights.numpy()
+    n_layers, n_qubits, _ = q_weights.shape
+
+    embed_model = tf.keras.Model(
+        inputs=hqnn_model.input,
+        outputs=hqnn_model.get_layer("embedding").output,
+    )
+
+    dev_sv = qml.device("default.qubit", wires=n_qubits)
+
+    @qml.qnode(dev_sv)
+    def _state_circuit(inputs, weights):
+        for i in range(n_qubits):
+            qml.RX(np.pi * inputs[i], wires=i)
+        for layer in range(n_layers):
+            for q in range(n_qubits):
+                qml.Rot(
+                    weights[layer, q, 0],
+                    weights[layer, q, 1],
+                    weights[layer, q, 2],
+                    wires=q,
+                )
+            for q in range(n_qubits):
+                qml.CNOT(wires=[q, (q + 1) % n_qubits])
+        return qml.state()
+
+    def _compute_mi_matrix(embeddings):
+        """Average QMI matrix over a set of embeddings."""
+        mi_acc = np.zeros((n_qubits, n_qubits))
+        for emb in embeddings:
+            sv = np.array(_state_circuit(emb.astype(float), q_weights), dtype=complex)
+            # Single-qubit entropies
+            s_single = [_von_neumann_entropy(_partial_trace(sv, [q], n_qubits))
+                        for q in range(n_qubits)]
+            # Build MI matrix
+            for i in range(n_qubits):
+                mi_acc[i, i] += s_single[i]
+                for j in range(i + 1, n_qubits):
+                    rho_ij = _partial_trace(sv, [i, j], n_qubits)
+                    s_ij   = _von_neumann_entropy(rho_ij)
+                    mi = s_single[i] + s_single[j] - s_ij
+                    mi_acc[i, j] += mi
+                    mi_acc[j, i] += mi
+        return mi_acc / max(len(embeddings), 1)
+
+    # Compute QMI separately for signal and noise events
+    n_each = max_samples // 2
+    sig_idx   = np.where(y_val == 0)[0][:n_each]
+    noise_idx = np.where(y_val == 1)[0][:n_each]
+
+    emb_sig   = embed_model.predict(X_val[sig_idx],   verbose=0)
+    emb_noise = embed_model.predict(X_val[noise_idx], verbose=0)
+
+    mi_sig   = _compute_mi_matrix(emb_sig)
+    mi_noise = _compute_mi_matrix(emb_noise)
+
+    # ── Plot ──────────────────────────────────────────────────────────────
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    qnames = [f"Q{i}" for i in range(n_qubits)]
+
+    for ax, mi_mat, title, cmap in [
+        (axes[0], mi_sig,   "Signal Events\n(Helicoidal Tracks)",  "Blues"),
+        (axes[1], mi_noise, "Background Events\n(Random Deposits)", "Reds"),
+    ]:
+        im = ax.imshow(mi_mat, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+        ax.set_xticks(range(n_qubits)); ax.set_xticklabels(qnames, fontsize=11)
+        ax.set_yticks(range(n_qubits)); ax.set_yticklabels(qnames, fontsize=11)
+        ax.set_title(title, fontweight="bold", fontsize=11, pad=10)
+
+        for i in range(n_qubits):
+            for j in range(n_qubits):
+                val = mi_mat[i, j]
+                label = f"S={val:.2f}" if i == j else f"I={val:.2f}"
+                ax.text(j, i, label, ha="center", va="center",
+                        fontsize=8, fontweight="bold",
+                        color="white" if val > 0.4 else "black")
+
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label(
+            "Diagonal: Von Neumann entropy S  |  Off-diag: Mutual information I",
+            fontsize=7,
+        )
+        cbar.ax.tick_params(labelsize=7)
+
+    fig.suptitle(
+        "Qubit Correlation Map — Quantum Mutual Information I(i:j) = S(ρᵢ) + S(ρⱼ) − S(ρᵢⱼ)\n"
+        "Diagonal = entanglement entropy per qubit  |  Off-diagonal = inter-qubit quantum correlation\n"
+        "Brighter cells = stronger quantum entanglement created by the CNOT ring ansatz",
+        fontsize=9, y=1.03,
+    )
+    fig.tight_layout()
+    return fig, mi_sig, mi_noise

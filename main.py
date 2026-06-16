@@ -284,6 +284,8 @@ s3d_ph = st.empty()   # classification demo
 s3e_ph = st.empty()   # embedding PCA
 s3f_ph = st.empty()   # noise robustness
 s3g_ph = st.empty()   # qubit scaling
+s3h_ph = st.empty()   # bloch spheres
+s3i_ph = st.empty()   # entanglement map
 
 if not train_button:
     s3a_ph.info("Train the model first to see benchmark results.")
@@ -431,6 +433,7 @@ if train_button:
         from analysis import (
             plot_confusion_matrices, plot_roc_curves, plot_embedding_pca,
             plot_classification_demo, plot_noise_robustness, plot_qubit_scaling,
+            plot_bloch_spheres, plot_entanglement_map,
         )
         import pandas as pd
 
@@ -671,10 +674,71 @@ if train_button:
                     pd.DataFrame(nq_rows), use_container_width=True, hide_index=True
                 )
 
+        # ── 3H: Bloch Sphere Visualisation ───────────────────────────────────
+        with s3h_ph.container():
+            st.subheader("3H — Quantum Feature Map: Bloch Sphere Visualisation")
+            st.markdown(
+                "Each Bloch sphere shows **where the quantum state of one qubit lands** "
+                "on the unit sphere after angle-encoding the classical CNN features and "
+                "applying the full CNOT-ring PQC ansatz. "
+                "The Bloch vector **r** = (⟨X⟩, ⟨Y⟩, ⟨Z⟩) is the qubit's mean "
+                "observable — a point on or inside the unit sphere. "
+                "If signal events (🟢) and noise events (🔴) land in **distinct "
+                "regions** of the sphere, the quantum circuit has separated the two "
+                "classes in Hilbert space and the subsequent Dense(1, sigmoid) layer "
+                "can exploit this geometric separation. "
+                "Poles (|0⟩ / |1⟩) = Z eigenstates; equator = equal superpositions."
+            )
+            with st.spinner("Running Bloch-sphere diagnostic circuits…"):
+                fig_bloch = plot_bloch_spheres(hqnn_model, X_val, y_val)
+            st.pyplot(fig_bloch)
+            plt.close(fig_bloch)
+            st.caption(
+                "Computed via a separate diagnostic QNode (no gradients needed) — "
+                "measures ⟨X⟩, ⟨Y⟩, ⟨Z⟩ per qubit after the full PQC on the "
+                "trained embedding of each validation event."
+            )
+
+        # ── 3I: Entanglement Strength Map ─────────────────────────────────
+        with s3i_ph.container():
+            st.subheader("3I — Entanglement Analytics: Qubit Correlation Map")
+            st.markdown(
+                "The **Quantum Mutual Information** between every pair of qubits, "
+                "I(i:j) = S(ρᵢ) + S(ρⱼ) − S(ρᵢⱼ), is computed from the full "
+                "state vector obtained after the PQC. "
+                "Diagonal cells show the **Von Neumann entropy** S(ρᵢ) of each "
+                "qubit — its entanglement with the rest of the register. "
+                "Off-diagonal cells show pairwise quantum correlations created by "
+                "the CNOT ring. **Bright cells prove the circuit is using genuine "
+                "quantum entanglement**, not just acting like a classical layer. "
+                "Results shown separately for Signal vs. Background events."
+            )
+            with st.spinner("Computing Von Neumann entropies and mutual information…"):
+                fig_ent, mi_sig, mi_noise = plot_entanglement_map(
+                    hqnn_model, X_val, y_val
+                )
+            st.pyplot(fig_ent)
+            plt.close(fig_ent)
+
+            e1, e2 = st.columns(2)
+            with e1:
+                st.markdown("**Signal — avg entanglement entropy per qubit**")
+                for q in range(mi_sig.shape[0]):
+                    st.metric(f"Qubit {q}", f"S = {mi_sig[q, q]:.3f} bits")
+            with e2:
+                st.markdown("**Background — avg entanglement entropy per qubit**")
+                for q in range(mi_noise.shape[0]):
+                    st.metric(f"Qubit {q}", f"S = {mi_noise[q, q]:.3f} bits")
+            st.caption(
+                "Von Neumann entropy S = 0 → qubit is in a pure product state (no entanglement). "
+                "S = 1 → maximally entangled with the register. "
+                "Values averaged over up to 8 validation events per class."
+            )
+
         st.success(
             "Experiment complete! All results are in Section 3 above. "
-            "Scroll up to review confusion matrices, ROC curves, and the "
-            "classification demo."
+            "Scroll up to review confusion matrices, ROC curves, Bloch spheres, "
+            "and the entanglement heatmap."
         )
         st.balloons()
 

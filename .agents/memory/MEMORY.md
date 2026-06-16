@@ -1,0 +1,1 @@
+- [PennyLane+Keras gradient bug](pennylane-keras-gradient-bug.md) — tf.map_fn+backprop kills gradients; fix is parameter-shift; KerasLayer removed in PL 0.45
