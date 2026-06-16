@@ -82,10 +82,19 @@ class QuantumLayer(tf.keras.layers.Layer):
     """
     Keras layer wrapping the PennyLane QNode.
 
-    Uses tf.map_fn to apply the circuit per sample.  With parameter-shift
-    differentiation, PennyLane exposes a @tf.custom_gradient to TF, so
-    gradients flow back correctly through the map without tracing the
-    circuit graph.
+    DTYPE STRATEGY
+    --------------
+    PennyLane's parameter-shift rule internally operates in float64.  If the
+    quantum weights are float32, the custom_gradient it registers returns
+    float64 gradients that TF tries to multiply against float32 tensors →
+    "type float32 does not match type float64" error.
+
+    Fix: store q_weights as float64, cast the batch input up to float64
+    before the circuit, and cast the output back to float32 for the
+    subsequent Dense layers.  tf.cast preserves gradient flow (identity
+    gradient with dtype conversion), so the full chain is consistent:
+
+        Dense (f32) → cast f32→f64 → QuantumLayer (f64) → cast f64→f32 → Dense (f32)
     """
 
     def __init__(self, n_layers: int = N_LAYERS, **kwargs):
@@ -96,7 +105,7 @@ class QuantumLayer(tf.keras.layers.Layer):
         self.q_weights = self.add_weight(
             name="q_weights",
             shape=(self.n_layers, N_QUBITS, 3),
-            # Near-zero init: gates start near identity, local gradients O(1)
+            dtype=tf.float64,          # must match parameter-shift gradient dtype
             initializer=tf.keras.initializers.RandomUniform(
                 minval=-0.1, maxval=0.1
             ),
@@ -105,15 +114,14 @@ class QuantumLayer(tf.keras.layers.Layer):
         super().build(input_shape)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
-        """inputs: (batch, 4)  →  output: (batch, 1)"""
-        return tf.map_fn(
-            lambda x: tf.expand_dims(
-                tf.cast(_quantum_circuit(x, self.q_weights), tf.float32),
-                axis=0,
-            ),
-            inputs,
-            fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float32),
+        """inputs: (batch, 4) float32  →  output: (batch, 1) float32"""
+        inputs_f64 = tf.cast(inputs, tf.float64)
+        results_f64 = tf.map_fn(
+            lambda x: tf.expand_dims(_quantum_circuit(x, self.q_weights), axis=0),
+            inputs_f64,
+            fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float64),
         )
+        return tf.cast(results_f64, tf.float32)
 
     def get_config(self):
         config = super().get_config()
@@ -204,19 +212,20 @@ def build_hqnn_nqubits(
             self.q_weights = self.add_weight(
                 name="q_weights",
                 shape=(self._nl, self._nq, 3),
+                dtype=tf.float64,          # match parameter-shift gradient dtype
                 initializer=tf.keras.initializers.RandomUniform(-0.1, 0.1),
                 trainable=True,
             )
             super().build(input_shape)
 
         def call(self, inputs):
-            return tf.map_fn(
-                lambda x: tf.expand_dims(
-                    tf.cast(_circuit_n(x, self.q_weights), tf.float32), axis=0
-                ),
-                inputs,
-                fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float32),
+            inputs_f64 = tf.cast(inputs, tf.float64)
+            results_f64 = tf.map_fn(
+                lambda x: tf.expand_dims(_circuit_n(x, self.q_weights), axis=0),
+                inputs_f64,
+                fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float64),
             )
+            return tf.cast(results_f64, tf.float32)
 
     inp = tf.keras.Input(shape=(28, 28, 1), name="detector_image")
     x = tf.keras.layers.Conv2D(8, 3, activation="relu", padding="same", name="conv2d")(inp)
