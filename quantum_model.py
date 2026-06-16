@@ -12,15 +12,33 @@ Architecture:
   │  → Dense(4, tanh)   ← 4-dim embedding        │
   ├──────────────────────────────────────────────┤
   │  Quantum Variational Classifier (4 qubits)   │
+  │  qml.qnn.KerasLayer — batching handled       │
   │  Angle Encoding: RX(π·xi) on each qubit      │
-  │  PQC: Rot + CNOT entanglement layers         │
+  │  PQC: Rot + CNOT ring, L=2                   │
   │  Measurement: ⟨Z₀⟩                           │
   ├──────────────────────────────────────────────┤
   │  Output: Dense(1, sigmoid)                   │
   └──────────────────────────────────────────────┘
 
-The quantum device is PennyLane's 'default.qubit' CPU simulator (NISQ-era
-emulation; no real QPU is required).
+GRADIENT NOTE
+-------------
+The original hand-rolled QuantumLayer used tf.map_fn which internally wraps
+execution in tf.while_loop.  This prevents TF's backprop from tracing through
+the PennyLane QNode's TF computation graph, so quantum weight gradients are
+always ~0 and the model never learns (loss ≈ ln(2), acc ≈ 0.5 throughout).
+
+The fix is qml.qnn.KerasLayer — PennyLane's official Keras integration.
+It handles per-sample batching internally using a vectorised map that keeps
+the computation graph contiguous, so TF's gradient tape flows through it
+correctly with diff_method="backprop".
+
+INITIALISATION
+--------------
+Near-zero initialisation (Grant et al. 2019, Quantum 3, 214) is used for the
+quantum weights.  Random uniform over [0, 2π] places the model in a high-
+variance region of parameter space where gradients are already exponentially
+small even before the barren-plateau effect from qubit count.  Initialising
+near zero keeps gates close to identity, where local gradients are O(1).
 """
 
 import numpy as np
@@ -29,8 +47,8 @@ import tensorflow as tf
 
 
 # ── Quantum circuit configuration ────────────────────────────────────────────
-N_QUBITS  = 4    # one qubit per feature dimension
-N_LAYERS  = 2    # depth of the variational ansatz
+N_QUBITS = 4    # one qubit per feature dimension
+N_LAYERS = 2    # PQC depth
 
 
 # ── PennyLane device (CPU quantum simulator) ─────────────────────────────────
@@ -38,35 +56,34 @@ _dev = qml.device("default.qubit", wires=N_QUBITS)
 
 
 # ── Quantum node ─────────────────────────────────────────────────────────────
-
+#
+# The circuit signature uses keyword argument `weights` so that
+# qml.qnn.KerasLayer can automatically create and manage the trainable
+# tf.Variable and wire its gradients into the Keras graph.
+#
 @qml.qnode(_dev, interface="tf", diff_method="backprop")
 def _quantum_circuit(inputs: tf.Tensor, weights: tf.Variable) -> tf.Tensor:
     """
-    4-qubit variational quantum circuit.
+    4-qubit angle-encoded variational quantum circuit.
 
     Parameters
     ----------
     inputs  : tf.Tensor, shape (4,)
-        Classical embedding values in [–1, 1] (tanh output).
+        Classical embedding values in [−1, 1] (tanh output).
     weights : tf.Variable, shape (N_LAYERS, N_QUBITS, 3)
-        Trainable Rot gate parameters (phi, theta, omega).
+        Trainable Rot gate parameters (phi, theta, omega) — managed by
+        qml.qnn.KerasLayer.
 
     Returns
     -------
-    tf.Tensor, scalar
-        PauliZ expectation value on qubit 0 ∈ [–1, 1].
+    tf.Tensor scalar — PauliZ expectation on qubit 0 ∈ [−1, 1].
     """
-    # ── Angle encoding ────────────────────────────────────────────────────
-    # Map each classical feature to a qubit rotation.
-    # Multiplying by π maps the tanh range [–1, 1] → [–π, π].
+    # Angle encoding: map each feature to a qubit rotation
     for i in range(N_QUBITS):
         qml.RX(np.pi * inputs[i], wires=i)
 
-    # ── Parameterised Quantum Circuit (PQC) ───────────────────────────────
-    # Each layer applies a Rot gate (arbitrary single-qubit rotation) to
-    # every qubit, followed by a ring of CNOT gates to entangle them.
+    # PQC: Rot gates + CNOT ring, repeated L times
     for layer in range(N_LAYERS):
-        # Single-qubit rotations
         for qubit in range(N_QUBITS):
             qml.Rot(
                 weights[layer, qubit, 0],   # phi
@@ -74,85 +91,42 @@ def _quantum_circuit(inputs: tf.Tensor, weights: tf.Variable) -> tf.Tensor:
                 weights[layer, qubit, 2],   # omega
                 wires=qubit,
             )
-        # Entanglement: ring topology CNOT gates
         for qubit in range(N_QUBITS):
             qml.CNOT(wires=[qubit, (qubit + 1) % N_QUBITS])
 
-    # ── Measurement ───────────────────────────────────────────────────────
+    # Local observable: mitigates barren plateaus vs. a global cost
     return qml.expval(qml.PauliZ(0))
 
 
-# ── Keras custom layer wrapping the QNode ────────────────────────────────────
+# Weight name must match the kwarg in _quantum_circuit
+_WEIGHT_SHAPES = {"weights": (N_LAYERS, N_QUBITS, 3)}
 
-class QuantumLayer(tf.keras.layers.Layer):
-    """
-    A tf.keras.layers.Layer that executes the quantum circuit.
-
-    The quantum weights are stored as a tf.Variable so that TF's automatic
-    differentiation can compute gradients through the QNode via PennyLane's
-    backprop interface.
-    """
-
-    def __init__(self, n_layers: int = N_LAYERS, **kwargs):
-        super().__init__(**kwargs)
-        self.n_layers = n_layers
-
-    def build(self, input_shape):
-        # shape: (N_LAYERS, N_QUBITS, 3) — 3 Euler angles per Rot gate
-        self.q_weights = self.add_weight(
-            name="q_weights",
-            shape=(self.n_layers, N_QUBITS, 3),
-            initializer=tf.keras.initializers.RandomUniform(
-                minval=0, maxval=2 * np.pi
-            ),
-            trainable=True,
+# Near-zero init (Grant et al. 2019): keeps gates near identity at epoch 0
+# where local gradients are O(1), avoiding the initialisation-induced plateau.
+_WEIGHT_SPECS = {
+    "weights": {
+        "initializer": tf.keras.initializers.RandomUniform(
+            minval=-0.1, maxval=0.1
         )
-        super().build(input_shape)
-
-    def call(self, inputs: tf.Tensor) -> tf.Tensor:
-        """
-        Apply the quantum circuit to each sample in the batch.
-
-        Parameters
-        ----------
-        inputs : tf.Tensor, shape (batch, 4)
-
-        Returns
-        -------
-        tf.Tensor, shape (batch, 1)
-        """
-        # Process each sample individually via tf.map_fn.
-        # fn_output_signature must be a plain TensorSpec (not Ragged) so that
-        # TF can stack the per-sample scalars into a dense (batch, 1) tensor.
-        results = tf.map_fn(
-            lambda x: tf.expand_dims(
-                tf.cast(_quantum_circuit(x, self.q_weights), tf.float32),
-                axis=0,
-            ),
-            inputs,
-            fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float32),
-        )
-        # results has shape (batch, 1) — no reshape needed
-        return results
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({"n_layers": self.n_layers})
-        return config
+    }
+}
 
 
 # ── Model factories ───────────────────────────────────────────────────────────
 
-def build_hqnn(learning_rate: float = 0.01) -> tf.keras.Model:
+def build_hqnn(learning_rate: float = 0.05) -> tf.keras.Model:
     """
     Build and compile the Hybrid Classical-Quantum Neural Network (HQNN).
 
-    Classical CNN compresses the 28×28 image to 4 features,
-    which are then processed by the quantum variational circuit.
+    The quantum layer is implemented via qml.qnn.KerasLayer, which handles
+    per-sample batching internally and keeps gradients flowing correctly
+    through the PennyLane backprop interface.
 
     Parameters
     ----------
-    learning_rate : float
+    learning_rate : float  (default 0.05 — higher than classical default to
+                            compensate for the shallower gradient landscape of
+                            the quantum circuit)
 
     Returns
     -------
@@ -160,20 +134,28 @@ def build_hqnn(learning_rate: float = 0.01) -> tf.keras.Model:
     """
     inp = tf.keras.Input(shape=(28, 28, 1), name="detector_image")
 
-    # ── Classical feature extractor ───────────────────────────────────────
+    # Classical feature extractor
     x = tf.keras.layers.Conv2D(
         filters=8, kernel_size=3, activation="relu", padding="same",
-        name="conv2d"
+        name="conv2d",
     )(inp)
     x = tf.keras.layers.MaxPooling2D(pool_size=2, name="maxpool")(x)
     x = tf.keras.layers.Flatten(name="flatten")(x)
     x = tf.keras.layers.Dense(4, activation="tanh", name="embedding")(x)
 
-    # ── Quantum variational classifier ────────────────────────────────────
-    x = QuantumLayer(n_layers=N_LAYERS, name="quantum_layer")(x)
+    # Quantum variational classifier
+    # qml.qnn.KerasLayer creates and owns the tf.Variable for `weights`,
+    # registers it as a trainable Keras weight, and applies the QNode to
+    # each sample in the batch with correct gradient propagation.
+    x = qml.qnn.KerasLayer(
+        _quantum_circuit,
+        _WEIGHT_SHAPES,
+        output_dim=1,
+        weight_specs=_WEIGHT_SPECS,
+        name="quantum_layer",
+    )(x)
 
-    # ── Binary output ─────────────────────────────────────────────────────
-    # Map the PauliZ expectation (∈ [–1, 1]) through sigmoid for probability.
+    # Binary output: sigmoid maps ⟨Z₀⟩ ∈ [−1,1] to a probability
     out = tf.keras.layers.Dense(1, activation="sigmoid", name="output")(x)
 
     model = tf.keras.Model(inputs=inp, outputs=out, name="HQNN")
@@ -187,11 +169,8 @@ def build_hqnn(learning_rate: float = 0.01) -> tf.keras.Model:
 
 def build_classical_cnn(learning_rate: float = 0.01) -> tf.keras.Model:
     """
-    Build and compile a purely classical CNN of equivalent parameter count
-    for direct benchmark comparison against the HQNN.
-
-    The quantum layer is replaced by a single Dense(8) + Dense(1) block
-    to match approximate parameter budget.
+    Purely classical CNN benchmark — same feature extractor as HQNN,
+    quantum layer replaced by Dense(8, relu) + Dense(1, sigmoid).
 
     Parameters
     ----------
@@ -199,19 +178,17 @@ def build_classical_cnn(learning_rate: float = 0.01) -> tf.keras.Model:
 
     Returns
     -------
-    tf.keras.Model (compiled, ready to train)
+    tf.keras.Model (compiled)
     """
     inp = tf.keras.Input(shape=(28, 28, 1), name="detector_image")
 
     x = tf.keras.layers.Conv2D(
         filters=8, kernel_size=3, activation="relu", padding="same",
-        name="conv2d"
+        name="conv2d",
     )(inp)
     x = tf.keras.layers.MaxPooling2D(pool_size=2, name="maxpool")(x)
     x = tf.keras.layers.Flatten(name="flatten")(x)
     x = tf.keras.layers.Dense(4, activation="tanh", name="embedding")(x)
-
-    # Classical equivalent of the quantum layer
     x = tf.keras.layers.Dense(8, activation="relu", name="classical_hidden")(x)
     out = tf.keras.layers.Dense(1, activation="sigmoid", name="output")(x)
 
@@ -227,15 +204,14 @@ def build_classical_cnn(learning_rate: float = 0.01) -> tf.keras.Model:
 def build_hqnn_nqubits(
     n_qubits: int,
     n_layers: int = 2,
-    learning_rate: float = 0.01,
+    learning_rate: float = 0.05,
 ) -> tf.keras.Model:
     """
-    Build an HQNN with *n_qubits* qubits for the qubit-scaling experiment.
+    Build an HQNN with *n_qubits* for the qubit-scaling experiment.
 
-    The Dense embedding layer output dimension is matched to *n_qubits* so
-    each qubit receives one feature via angle encoding.  All other design
-    choices (Rot + CNOT ring ansatz, PauliZ(0) measurement, Adam) are
-    identical to the standard 4-qubit model.
+    Creates a fresh PennyLane device and QNode scoped to this call so
+    multiple qubit counts can coexist without shared state.  Uses
+    qml.qnn.KerasLayer for correct gradient flow (same fix as build_hqnn).
 
     Parameters
     ----------
@@ -247,7 +223,6 @@ def build_hqnn_nqubits(
     -------
     Compiled tf.keras.Model
     """
-    # Create a fresh device and QNode scoped to this call
     dev_n = qml.device("default.qubit", wires=n_qubits)
 
     @qml.qnode(dev_n, interface="tf", diff_method="backprop")
@@ -266,48 +241,27 @@ def build_hqnn_nqubits(
                 qml.CNOT(wires=[q, (q + 1) % n_qubits])
         return qml.expval(qml.PauliZ(0))
 
-    class _QuantumLayerN(tf.keras.layers.Layer):
-        """Generic quantum layer for n_qubits; closes over _circuit_n."""
-
-        def __init__(self, nq, nl, **kwargs):
-            super().__init__(**kwargs)
-            self._nq = nq
-            self._nl = nl
-
-        def build(self, input_shape):
-            self.q_weights = self.add_weight(
-                name="q_weights",
-                shape=(self._nl, self._nq, 3),
-                initializer=tf.keras.initializers.RandomUniform(
-                    minval=0, maxval=2 * np.pi
-                ),
-                trainable=True,
-            )
-            super().build(input_shape)
-
-        def call(self, inputs):
-            return tf.map_fn(
-                lambda x: tf.expand_dims(
-                    tf.cast(_circuit_n(x, self.q_weights), tf.float32), axis=0
-                ),
-                inputs,
-                fn_output_signature=tf.TensorSpec(shape=(1,), dtype=tf.float32),
-            )
+    weight_shapes = {"weights": (n_layers, n_qubits, 3)}
+    weight_specs  = {
+        "weights": {
+            "initializer": tf.keras.initializers.RandomUniform(-0.1, 0.1)
+        }
+    }
 
     inp = tf.keras.Input(shape=(28, 28, 1), name="detector_image")
     x = tf.keras.layers.Conv2D(
-        8, 3, activation="relu", padding="same", name="conv2d"
+        8, 3, activation="relu", padding="same", name="conv2d",
     )(inp)
     x = tf.keras.layers.MaxPooling2D(2, name="maxpool")(x)
     x = tf.keras.layers.Flatten(name="flatten")(x)
-    # Embedding dimension = n_qubits so each qubit gets exactly one feature
     x = tf.keras.layers.Dense(n_qubits, activation="tanh", name="embedding")(x)
-    x = _QuantumLayerN(n_qubits, n_layers, name="quantum_layer")(x)
+    x = qml.qnn.KerasLayer(
+        _circuit_n, weight_shapes, output_dim=1,
+        weight_specs=weight_specs, name="quantum_layer",
+    )(x)
     out = tf.keras.layers.Dense(1, activation="sigmoid", name="output")(x)
 
-    model = tf.keras.Model(
-        inputs=inp, outputs=out, name=f"HQNN_{n_qubits}q"
-    )
+    model = tf.keras.Model(inputs=inp, outputs=out, name=f"HQNN_{n_qubits}q")
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
         loss="binary_crossentropy",

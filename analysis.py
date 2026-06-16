@@ -374,8 +374,7 @@ def plot_noise_robustness(
     ax2.grid(alpha=0.25, axis="y")
 
     fig.suptitle(
-        "Noise Robustness Test — simulates detector noise, pile-up, or hardware errors\n"
-        "Contrary to the quantum-robustness hypothesis: Classical CNN degrades more gracefully than HQNN",
+        "Noise Robustness Test — accuracy under increasing additive Gaussian noise",
         fontsize=9, y=1.02,
     )
     fig.tight_layout()

@@ -357,8 +357,19 @@ Mitigation strategies in this project (see Section 3G for empirical evidence):
   cost functions have polynomially-vanishing gradients vs. exponential for global
 - **Classical pre-processing**: 784 → 4 features eliminates the vast majority of
   the Hilbert space before quantum computation
-- **Near-zero initialisation**: weights drawn from $[0, 2\pi]$ and typically
-  converge near identity, where gradients are known to be larger
+- **Near-zero initialisation** (Grant et al. 2019): quantum weights drawn from
+  $[-0.1, 0.1]$ keep gates near identity at epoch 0, where local gradients
+  are O(1) rather than exponentially small.  Uniform $[0, 2\pi]$ initialisation
+  places parameters in the flat high-variance region from the very first step.
+
+**Implementation note:** gradient flow through the quantum layer requires
+`qml.qnn.KerasLayer` (PennyLane's official Keras integration) rather than a
+hand-rolled `tf.map_fn` wrapper.  `tf.map_fn` internally uses `tf.while_loop`,
+which prevents TF's backprop from tracing through the QNode's computation graph —
+quantum weight gradients are identically zero and the model collapses to a
+constant predictor (loss ≈ ln 2, accuracy ≈ 50%).  `qml.qnn.KerasLayer`
+handles per-sample batching with a vectorised map that keeps the graph
+contiguous, restoring correct gradient flow.
 
 The qubit scaling experiment (Section 3G) provides **empirical** validation:
 training curves for 2, 4, and 6 qubits directly demonstrate the slower
@@ -587,15 +598,10 @@ if train_button:
             st.subheader("3F — Noise Robustness Test")
             st.markdown(
                 "Additive Gaussian noise (σ from 0 → 0.5) is applied to the "
-                "validation images, simulating detector noise, cross-talk, or "
-                "hardware errors. **Contrary to some literature predicting quantum "
-                "robustness**, our empirical results show the Classical CNN handles "
-                "high-frequency Gaussian noise significantly better than the current "
-                "HQNN architecture. The HQNN drops toward baseline random guessing "
-                "(≈ 50% accuracy) at σ ≥ 0.30, indicating the quantum embedding layer "
-                "is highly sensitive to input perturbations. This is consistent with "
-                "angle encoding mapping small pixel changes directly to qubit rotations, "
-                "amplifying noise into the quantum circuit without attenuation."
+                "validation images at inference time, simulating detector cross-talk, "
+                "pile-up, or hardware bit-flip errors. The degradation curves show "
+                "how gracefully each model handles corrupted inputs — a practical "
+                "concern for any NISQ-era deployment where hardware noise is unavoidable."
             )
             with st.spinner("Running noise robustness test…"):
                 fig_noise, hqnn_noise_accs, cnn_noise_accs = plot_noise_robustness(
