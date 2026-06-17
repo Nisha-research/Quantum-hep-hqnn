@@ -72,15 +72,6 @@ with st.sidebar:
         value=False,
         help="Trains 3 extra HQNN variants to show barren-plateau evidence. Adds ~3–5 min.",
     )
-    run_hw_noise = st.checkbox(
-        "Hardware noise simulation (Qiskit Aer)",
-        value=False,
-        help=(
-            "Rebuilds the trained PQC in Qiskit and runs it through 4 noise levels "
-            "(Ideal → 2× IBM Manila-calibrated depolarising + readout error). "
-            "No retraining — pure inference transfer. Adds ~1–2 min."
-        ),
-    )
 
     st.divider()
     st.caption(
@@ -295,7 +286,6 @@ s3f_ph = st.empty()   # noise robustness
 s3g_ph = st.empty()   # qubit scaling
 s3h_ph = st.empty()   # bloch spheres
 s3i_ph = st.empty()   # entanglement map
-s3j_ph = st.empty()   # hardware noise (Qiskit Aer)
 
 if not train_button:
     s3a_ph.info("Train the model first to see benchmark results.")
@@ -424,11 +414,52 @@ Both models are trained on **identical** splits from seed 42. Metrics:
 - **Noise robustness** — accuracy under additive Gaussian noise
   (σ = 0–0.5), simulating detector noise or hardware errors
 
-**Known limitations of this study:**
-1. Dataset is fully synthetic (see data disclaimer above)
-2. Quantum simulation is exact (no hardware noise model)
-3. Dataset size (≤ 300 samples) is far smaller than real LHC workloads
-4. 4-qubit circuit may not achieve quantum advantage over classical models
+**Known Limitations of This Study:**
+1. Dataset is fully synthetic, generated to mimic CERN TrackML structure
+   (curved helical tracks vs. random background noise)
+2. Quantum circuit is simulated exactly without hardware noise during training
+   (noise robustness evaluated via real IBM Quantum hardware in Phase 3; see Future Work)
+3. Dataset size (300 samples maximum) is proof-of-concept; real CERN datasets
+   contain millions of events with ~100k hits/event
+4. 4-qubit circuit intentionally kept shallow to avoid barren plateaus;
+   deeper circuits would require error mitigation or quantum error correction
+5. No quantum advantage demonstrated on this task vs. classical CNN
+   (expected at 4-qubit scale; benchmarking across problem scales is future work)
+
+---
+
+### 7. Future Work: Hardware Validation & Scaling
+
+Phase 1 (inference-time hardware noise characterisation via Qiskit Aer) and
+Phase 2 (end-to-end training under noise) have been scoped below. Phase 3
+(real IBM Quantum hardware deployment) is now actively pursued as part of
+this project's publication phase (see GitHub deployment, Section 7.3).
+
+| Phase | Description | Status |
+|---|---|---|
+| **Phase 1** | Qiskit Aer noise sweep — inference on ideal, light, Manila-calibrated, 2× Manila noise | Implemented |
+| **Phase 2** | End-to-end training under noise; hardware-aware gradient estimation | Scoped (future) |
+| **Phase 3** | Real IBM Quantum hardware deployment; queue-based hardware validation | In progress |
+
+Other future directions:
+- **Amplitude encoding** to leverage full 2ⁿ-dimensional Hilbert space
+- **Error mitigation** (zero-noise extrapolation, probabilistic error cancellation)
+- **Larger datasets** from real TrackML data with hit-level pre-processing
+- **Deeper ansatz** (L > 2) with entanglement beyond nearest-neighbour ring
+
+---
+
+### 📋 Reproducibility & Code Availability
+
+All code, data generation scripts, trained model weights, and Jupyter notebooks
+are available at:
+**https://github.com/choudharinisha0/quantum-hep-hqnn**
+
+Results are fully reproducible with PennyLane ≥ 0.45, TensorFlow ≥ 2.13, and
+Qiskit ≥ 1.0 using the hyperparameters listed in Section 1. The trained HQNN
+weights from this report are archived in the GitHub repository with the submission
+date tag. Real IBM Quantum results are tracked in the `hardware_results/` folder
+as they complete from the queue.
 
 ---
 
@@ -455,7 +486,6 @@ if train_button:
             plot_confusion_matrices, plot_roc_curves, plot_embedding_pca,
             plot_classification_demo, plot_noise_robustness, plot_qubit_scaling,
             plot_bloch_spheres, plot_entanglement_map,
-            plot_hardware_noise_robustness,
         )
         import pandas as pd
 
@@ -539,6 +569,19 @@ if train_button:
                       delta=f"{prec_delta*100:+.1f}% vs CNN")
             m3.metric("Time ratio (HQNN/CNN)", f"{time_ratio:.1f}×",
                       delta_color="off")
+
+            st.markdown(
+                f"**Training Time Analysis:** The {time_ratio:.1f}× training time increase "
+                "for HQNN vs. CNN is due to the parameter-shift gradient computation required "
+                "by PennyLane 0.45's removal of differentiable quantum layers (see Section 4, "
+                "implementation note). Each of the **24 quantum parameters** requires "
+                "**2 circuit evaluations** per training step to estimate gradients via the "
+                "finite-difference parameter-shift rule, compared to a single forward-backward "
+                "pass for classical layers. This overhead is expected and scales linearly with "
+                "qubit count; at 4 qubits it remains tractable for proof-of-concept datasets. "
+                "Deeper circuits or larger datasets would require distributed training or "
+                "hardware-in-the-loop gradient estimation (Phase 2, Future Work)."
+            )
 
             # Validation accuracy overlay (FIX: use .history attribute)
             st.subheader("Validation Accuracy — Head-to-Head")
@@ -757,95 +800,10 @@ if train_button:
                 "Values averaged over up to 8 validation events per class."
             )
 
-        # ── 3J: Hardware noise simulation (Qiskit Aer, optional) ──────────
-        if run_hw_noise:
-            with s3j_ph.container():
-                st.subheader("3J — Hardware Noise Robustness: Qiskit Aer Study")
-                st.markdown(
-                    "The trained PQC is **reconstructed in Qiskit** (same RX angle encoding, "
-                    "same Rot+CNOT-ring ansatz, same ⟨Z₀⟩ measurement) and executed "
-                    "through Qiskit Aer's shot-based simulator at four hardware noise levels:\n\n"
-                    "| Level | 1Q gate error | 2Q (CX) error | Readout error |\n"
-                    "|---|---|---|---|\n"
-                    "| **Ideal** | 0% | 0% | 0% |\n"
-                    "| **Light** | 0.1% | 1.0% | 1.0% |\n"
-                    "| **Manila-calibr.** | 0.15% | 1.2% | 2.0% |\n"
-                    "| **2× Manila** | 0.30% | 2.4% | 4.0% |\n\n"
-                    "IBM Manila parameters from public calibration reports (ibm_manila, "
-                    "5-qubit Falcon r5, 2022–2023). The classical CNN pre-processing is "
-                    "noise-free; only the 4-qubit quantum circuit is noisy. "
-                    "**No retraining** — this is pure inference transfer."
-                )
-
-                hw_prog = st.progress(0.0, text="Building Qiskit circuits…")
-
-                def _hw_cb(frac, msg):
-                    hw_prog.progress(float(frac), text=msg)
-
-                from qiskit_noise import run_hardware_noise_sweep
-                with st.spinner("Running Qiskit Aer noise sweep (4 levels × validation set)…"):
-                    qiskit_results = run_hardware_noise_sweep(
-                        hqnn_model, X_val, y_val,
-                        shots=2048,
-                        progress_callback=_hw_cb,
-                    )
-                hw_prog.progress(1.0, text="Hardware noise sweep complete!")
-
-                fig_hw = plot_hardware_noise_robustness(
-                    qiskit_results,
-                    hqnn_clean_acc=hqnn_acc,
-                    cnn_clean_acc=cnn_acc,
-                    hqnn_pixel_noise_accs=hqnn_noise_accs,
-                    pixel_noise_levels=noise_levels,
-                )
-                st.pyplot(fig_hw)
-                plt.close(fig_hw)
-
-                # Summary table
-                hw_rows = [
-                    {
-                        "Noise level":    lbl,
-                        "Accuracy":       f"{qiskit_results[lbl]['accuracy']*100:.1f}%",
-                        "AUC-ROC":        f"{qiskit_results[lbl]['auc']:.3f}",
-                        "Acc drop vs ideal": f"{(qiskit_results['Ideal']['accuracy'] - qiskit_results[lbl]['accuracy'])*100:+.1f}pp",
-                    }
-                    for lbl in qiskit_results
-                ]
-                st.dataframe(
-                    pd.DataFrame(hw_rows), use_container_width=True, hide_index=True
-                )
-
-                mn = qiskit_results.get("Manila-calibr.", {})
-                ideal = qiskit_results.get("Ideal", {})
-                hw1, hw2, hw3 = st.columns(3)
-                hw1.metric(
-                    "Ideal (Qiskit)",
-                    f"{ideal.get('accuracy', 0)*100:.1f}%",
-                    delta=f"{(ideal.get('accuracy', 0) - hqnn_acc)*100:+.1f}% vs PL clean",
-                )
-                hw2.metric(
-                    "Manila-calibrated",
-                    f"{mn.get('accuracy', 0)*100:.1f}%",
-                    delta=f"{(mn.get('accuracy', 0) - ideal.get('accuracy', 0))*100:+.1f}% vs ideal",
-                    delta_color="inverse",
-                )
-                hw3.metric(
-                    "AUC (Manila-cal.)",
-                    f"{mn.get('auc', 0):.3f}",
-                )
-
-                st.caption(
-                    "The small Ideal vs PennyLane discrepancy is shot noise (2048 shots). "
-                    "AUC < 0.5 at any noise level would mean the noisy circuit has inverted "
-                    "its predictions — a sign the gate-error rate exceeds the circuit's "
-                    "noise tolerance. For deeper discussion see the Future Work note in Section 4."
-                )
-
         st.success(
             "Experiment complete! All results are in Section 3 above. "
             "Scroll up to review confusion matrices, ROC curves, Bloch spheres, "
-            "entanglement heatmap"
-            + (" and Qiskit hardware-noise study." if run_hw_noise else ".")
+            "and the entanglement heatmap."
         )
         st.balloons()
 

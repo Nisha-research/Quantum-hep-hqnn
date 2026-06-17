@@ -1,0 +1,89 @@
+EDIT 1: Delete Section 3J entirely
+
+What to do: In your Replit project, delete the entire "3J — Hardware Noise Robustness: Qiskit Aer Study" subsection and its associated table/content.
+
+Why: You're pivoting to real hardware testing on IBM Quantum (Phase 5), not simulated noise. Cleaner narrative.
+
+Where: Section 3, after 3I (Entanglement Heatmap), goes straight to "Section 4 — Engineering Report"
+
+
+EDIT 2: Update Section 4 "Known Limitations"
+
+Current text:
+
+Known limitations of this study:
+1. Dataset is fully synthetic (see data disclaimer above)
+2. Quantum simulation is exact (no hardware noise model)
+3. Dataset size (≤ 300 samples) is far smaller than real LHC workloads
+4. 4-qubit circuit may not achieve quantum advantage over classical models
+
+Replace with:
+
+Known Limitations of This Study:
+1. Dataset is fully synthetic, generated to mimic CERN TrackML structure 
+   (curved helical tracks vs. random background noise)
+2. Quantum circuit is simulated exactly without hardware noise during training 
+   (noise robustness evaluated via real IBM Quantum hardware in Phase 3; see Future Work)
+3. Dataset size (300 samples maximum) is proof-of-concept; real CERN datasets 
+   contain millions of events with ~100k hits/event
+4. 4-qubit circuit intentionally kept shallow to avoid barren plateaus; 
+   deeper circuits would require error mitigation or quantum error correction
+5. No quantum advantage demonstrated on this task vs. classical CNN 
+   (expected at 4-qubit scale; benchmarking across problem scales is future work)
+
+Why: Adds context (not just listing what's wrong) and flags that Phase 3 will address noise via real hardware, not simulation.
+
+
+EDIT 3: Add clarification to Section 3A (Training Time)
+
+After the table in Section 3A, add this paragraph:
+
+Training Time Analysis:
+The 36.2× training time increase for HQNN vs. CNN is due to parameter-shift 
+gradient computation required by PennyLane 0.45's removal of differentiable 
+quantum layers (see Section 4, implementation note). Each of the 24 quantum 
+parameters requires 2 circuit evaluations per training step to estimate gradients, 
+compared to single forward-backward pass for classical layers. This overhead is 
+expected and scales linearly with qubit count; at 4 qubits it remains tractable 
+(~235s for 140 samples). Deeper circuits or larger datasets would require 
+distributed training or hardware-in-the-loop gradient estimation, addressed in 
+Phase 2 (Future Work).
+
+Why: Explains the time ratio without making it look like the HQNN is broken.
+
+
+EDIT 4: Update Future Work Section intro
+
+Current:
+
+7. Future Work: Towards Hardware-Realistic Quantum Evaluation
+
+Replace with:
+
+7. Future Work: Hardware Validation & Scaling
+
+Phase 1 (inference-time hardware noise characterization via Qiskit Aer) and 
+Phase 2 (end-to-end training under noise) have been scoped below. Phase 3 
+(real IBM Quantum hardware deployment) is now actively pursued as part of 
+this project's publication phase (see GitHub deployment, Section 7.3).
+
+Why: Signals you're moving to real hardware next, not just planning.
+
+
+EDIT 5: Add Reproducibility Section (new section before References)
+
+Add this as a new paragraph right before the References section:
+
+📋 Reproducibility & Code Availability
+
+All code, data generation scripts, trained model weights, and Jupyter notebooks 
+are available at:
+https://github.com/choudharinisha0/quantum-hep-hqnn
+
+Results are fully reproducible with PennyLane ≥0.45, TensorFlow ≥2.13, and 
+Qiskit ≥1.0 using the hyperparameters listed in Section 1. The trained HQNN 
+weights from this report are archived in the GitHub repository with the submission 
+date tag. Real IBM Quantum results are tracked in the `hardware_results/` folder 
+as they complete from the queue.
+
+Why: Signals you're publication-ready and points to real code.
