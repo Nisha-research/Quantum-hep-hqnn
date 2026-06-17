@@ -65,7 +65,7 @@ def plot_confusion_matrices(
         im = ax.imshow(cm_norm, cmap=cmap, vmin=0, vmax=1)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-        class_names = ["Signal\n(track)", "Noise\n(background)"]
+        class_names = ["⚛️ Signal\n(Class 0)", "❌ Noise\n(Class 1)"]
         ax.set_xticks([0, 1])
         ax.set_yticks([0, 1])
         ax.set_xticklabels(class_names, fontsize=9)
@@ -180,8 +180,8 @@ def plot_embedding_pca(
          PCA(n_components=2).fit(feats_c).explained_variance_ratio_),
     ]:
         for cls, color, marker, label in [
-            (0, _SIGNAL_COLOR, "o", "Signal (helix track)"),
-            (1, _NOISE_COLOR,  "^", "Background noise"),
+            (0, _SIGNAL_COLOR, "o", "⚛️ Signal (Particle Track)"),
+            (1, _NOISE_COLOR,  "^", "❌ Background Noise (Detector Hits)"),
         ]:
             mask = y == cls
             ax.scatter(
@@ -248,8 +248,8 @@ def plot_classification_demo(
         facecolor="#0e1117",
     )
 
-    class_names   = ["Signal", "Noise"]
-    short_names   = ["SIG", "NOISE"]
+    class_names   = ["⚛️ Signal", "❌ Noise"]
+    short_names   = ["⚛️SIG", "❌NOISE"]
     row_labels    = ["HQNN", "CNN"]
     row_preds     = [(y_pred_h, y_score_h), (y_pred_c, y_score_c)]
     row_colors_ok = ["#00cc66",  "#00cc66"]
@@ -580,7 +580,7 @@ def plot_bloch_spheres(
             bloch[sig_mask,   1, q],
             bloch[sig_mask,   2, q],
             c="#00ff88", s=40, alpha=0.85, edgecolors="white",
-            linewidths=0.3, label="Signal", zorder=6,
+            linewidths=0.3, label="⚛️ Signal (Class 0)", zorder=6,
         )
         # Scatter: noise
         ax.scatter(
@@ -588,7 +588,7 @@ def plot_bloch_spheres(
             bloch[noise_mask, 1, q],
             bloch[noise_mask, 2, q],
             c="#ff4444", s=40, alpha=0.85, edgecolors="white",
-            linewidths=0.3, label="Noise", zorder=6,
+            linewidths=0.3, label="❌ Noise (Class 1)", zorder=6,
         )
 
         ax.set_title(qubit_labels[q], color="white", fontsize=10,

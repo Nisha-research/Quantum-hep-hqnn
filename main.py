@@ -115,7 +115,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
         fig_ann, (ax_s, ax_b) = plt.subplots(1, 2, figsize=(10, 5), facecolor="#0e1117")
 
         im_s = ax_s.imshow(sig_img, cmap="inferno", vmin=0, vmax=1)
-        ax_s.set_title("[CLASS 0]  Signal Event\n(Helicoidal Particle Track)",
+        ax_s.set_title("[⚛️ CLASS 0: Signal Event (Particle Track)]\nHelical trajectory from interaction vertex",
                        color="#00ff88", fontsize=11, fontweight="bold", pad=10)
         ax_s.set_xlabel("Detector column (pixel)", color="#aaaaaa", fontsize=8)
         ax_s.set_ylabel("Detector row (pixel)",    color="#aaaaaa", fontsize=8)
@@ -140,7 +140,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
         plt.setp(cb_s.ax.yaxis.get_ticklabels(), color="#aaaaaa")
 
         im_b = ax_b.imshow(bg_img, cmap="inferno", vmin=0, vmax=1)
-        ax_b.set_title("[CLASS 1]  Background Noise\n(Uncorrelated Energy Deposits)",
+        ax_b.set_title("[❌ CLASS 1: Background Noise (Detector Hits)]\nRandom uncorrelated deposits",
                        color="#ff4444", fontsize=11, fontweight="bold", pad=10)
         ax_b.set_xlabel("Detector column (pixel)", color="#aaaaaa", fontsize=8)
         ax_b.set_ylabel("Detector row (pixel)",    color="#aaaaaa", fontsize=8)
@@ -171,7 +171,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
         inf_l, inf_r = st.columns(2)
         with inf_l:
             st.info(
-                "**Class 0 — Signal Event**\n\n"
+                "**⚛️ CLASS 0: Signal Event (Particle Track)**\n\n"
                 "- Track **originates at the interaction vertex** (detector centre)\n"
                 "- **Curved trajectory** from Lorentz force under solenoidal B-field\n"
                 "- Hits are **spatially connected** along a smooth helix\n"
@@ -180,7 +180,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
             )
         with inf_r:
             st.warning(
-                "**Class 1 — Background Noise**\n\n"
+                "**❌ CLASS 1: Background Noise (Detector Hits)**\n\n"
                 "- Hits are **randomly distributed** across the full 28×28 plane\n"
                 "- **No spatial correlation** between adjacent cells\n"
                 "- **No origin point** — hits do not form a continuous path\n"
@@ -199,7 +199,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
         fig_grid, axes_grid = plt.subplots(
             2, n_each, figsize=(n_each * 2.2, 5), facecolor="#0e1117"
         )
-        row_labels = ["[0] SIGNAL\n(Helicoidal Track)", "[1] NOISE\n(Random Deposits)"]
+        row_labels = ["[⚛️ CLASS 0]\nSignal (Particle Track)", "[❌ CLASS 1]\nNoise (Detector Hits)"]
         row_colors = ["#00ff88", "#ff4444"]
 
         for row_idx, (label, row_color) in enumerate(zip([0, 1], row_colors)):
@@ -212,7 +212,7 @@ with st.expander("📷 View annotated detector image gallery", expanded=True):
                 for sp in ax.spines.values():
                     sp.set_edgecolor(row_color); sp.set_linewidth(2)
                 ax.set_title(
-                    f"{'Signal' if label == 0 else 'Noise'} #{col_idx + 1}",
+                    f"{'⚛️ Signal' if label == 0 else '❌ Noise'} #{col_idx + 1}",
                     color=row_color, fontsize=8, pad=3,
                 )
             axes_grid[row_idx, 0].set_ylabel(
@@ -418,7 +418,7 @@ Both models are trained on **identical** splits from seed 42. Metrics:
 1. Dataset is fully synthetic, generated to mimic CERN TrackML structure
    (curved helical tracks vs. random background noise)
 2. Quantum circuit is simulated exactly without hardware noise during training
-   (noise robustness evaluated via real IBM Quantum hardware in Phase 3; see Future Work)
+   (noise robustness evaluated via real IBM Quantum hardware in Phase 1; see Future Work)
 3. Dataset size (300 samples maximum) is proof-of-concept; real CERN datasets
    contain millions of events with ~100k hits/event
 4. 4-qubit circuit intentionally kept shallow to avoid barren plateaus;
@@ -430,16 +430,15 @@ Both models are trained on **identical** splits from seed 42. Metrics:
 
 ### 7. Future Work: Hardware Validation & Scaling
 
-Phase 1 (inference-time hardware noise characterisation via Qiskit Aer) and
-Phase 2 (end-to-end training under noise) have been scoped below. Phase 3
-(real IBM Quantum hardware deployment) is now actively pursued as part of
-this project's publication phase (see GitHub deployment, Section 7.3).
+Phase 1 (real IBM Quantum hardware deployment) is now actively pursued as part of
+this project's publication phase — circuits have been submitted and results are
+pending 1–24 hours in the IBM Quantum queue (see GitHub, `hardware_results/`).
+Phase 2 (end-to-end training under noise) is scoped below.
 
 | Phase | Description | Status |
 |---|---|---|
-| **Phase 1** | Qiskit Aer noise sweep — inference on ideal, light, Manila-calibrated, 2× Manila noise | Implemented |
+| **Phase 1 (Real Hardware)** | IBM Quantum hardware deployment — circuits submitted, results pending 1–24 hours | 🔄 In progress |
 | **Phase 2** | End-to-end training under noise; hardware-aware gradient estimation | Scoped (future) |
-| **Phase 3** | Real IBM Quantum hardware deployment; queue-based hardware validation | In progress |
 
 Other future directions:
 - **Amplitude encoding** to leverage full 2ⁿ-dimensional Hilbert space
@@ -776,7 +775,7 @@ if train_button:
                 "Off-diagonal cells show pairwise quantum correlations created by "
                 "the CNOT ring. **Bright cells prove the circuit is using genuine "
                 "quantum entanglement**, not just acting like a classical layer. "
-                "Results shown separately for Signal vs. Background events."
+                "Results shown separately for ⚛️ Signal (Class 0: Particle Track) vs. ❌ Background (Class 1: Detector Hits)."
             )
             with st.spinner("Computing Von Neumann entropies and mutual information…"):
                 fig_ent, mi_sig, mi_noise = plot_entanglement_map(
@@ -787,11 +786,11 @@ if train_button:
 
             e1, e2 = st.columns(2)
             with e1:
-                st.markdown("**Signal — avg entanglement entropy per qubit**")
+                st.markdown("**⚛️ CLASS 0: Signal (Particle Track) — avg entanglement entropy per qubit**")
                 for q in range(mi_sig.shape[0]):
                     st.metric(f"Qubit {q}", f"S = {mi_sig[q, q]:.3f} bits")
             with e2:
-                st.markdown("**Background — avg entanglement entropy per qubit**")
+                st.markdown("**❌ CLASS 1: Background Noise (Detector Hits) — avg entanglement entropy per qubit**")
                 for q in range(mi_noise.shape[0]):
                     st.metric(f"Qubit {q}", f"S = {mi_noise[q, q]:.3f} bits")
             st.caption(
