@@ -72,6 +72,15 @@ with st.sidebar:
         value=False,
         help="Trains 3 extra HQNN variants to show barren-plateau evidence. Adds ~3–5 min.",
     )
+    run_hw_noise = st.checkbox(
+        "Hardware noise simulation (Qiskit Aer)",
+        value=False,
+        help=(
+            "Rebuilds the trained PQC in Qiskit and runs it through 4 noise levels "
+            "(Ideal → 2× IBM Manila-calibrated depolarising + readout error). "
+            "No retraining — pure inference transfer. Adds ~1–2 min."
+        ),
+    )
 
     st.divider()
     st.caption(
@@ -286,6 +295,7 @@ s3f_ph = st.empty()   # noise robustness
 s3g_ph = st.empty()   # qubit scaling
 s3h_ph = st.empty()   # bloch spheres
 s3i_ph = st.empty()   # entanglement map
+s3j_ph = st.empty()   # hardware noise (Qiskit Aer)
 
 if not train_button:
     s3a_ph.info("Train the model first to see benchmark results.")
@@ -364,14 +374,25 @@ Mitigation strategies in this project (see Section 3G for empirical evidence):
   are O(1) rather than exponentially small.  Uniform $[0, 2\pi]$ initialisation
   places parameters in the flat high-variance region from the very first step.
 
-**Implementation note:** gradient flow through the quantum layer requires
-`qml.qnn.KerasLayer` (PennyLane's official Keras integration) rather than a
-hand-rolled `tf.map_fn` wrapper.  `tf.map_fn` internally uses `tf.while_loop`,
-which prevents TF's backprop from tracing through the QNode's computation graph —
-quantum weight gradients are identically zero and the model collapses to a
-constant predictor (loss ≈ ln 2, accuracy ≈ 50%).  `qml.qnn.KerasLayer`
-handles per-sample batching with a vectorised map that keeps the graph
-contiguous, restoring correct gradient flow.
+**Implementation note — gradient flow and dtype consistency:** PennyLane 0.45
+removed `qml.qnn.KerasLayer`.  The replacement is a custom `tf.keras.layers.Layer`
+wrapping the QNode via `tf.map_fn`.  Two requirements must hold simultaneously:
+
+1. `diff_method="parameter-shift"` (not `"backprop"`).  `tf.map_fn` compiles to
+   `tf.while_loop`; TF's backprop cannot trace the QNode graph through a while_loop.
+   Parameter-shift registers the gradient externally as a `@tf.custom_gradient`,
+   which *does* propagate through `map_fn` without needing circuit-graph tracing.
+
+2. Quantum weights must be declared as `dtype=tf.float64`.  Parameter-shift
+   evaluates the circuit at shifted parameter values using numpy (float64 internally)
+   and returns float64 gradients via the custom_gradient.  If weights are float32
+   (Keras default), TF raises `"type float32 does not match type float64"` during
+   `tape.gradient`.  Storing weights as float64 and casting inputs up / output back
+   down keeps the gradient chain dtype-consistent.
+
+Without (1), quantum weight gradients are identically zero and the model collapses
+to a constant predictor (loss ≈ ln 2, accuracy ≈ 50%).
+Without (2), training crashes with a dtype mismatch inside `tape.gradient`.
 
 The qubit scaling experiment (Section 3G) provides **empirical** validation:
 training curves for 2, 4, and 6 qubits directly demonstrate the slower
@@ -434,6 +455,7 @@ if train_button:
             plot_confusion_matrices, plot_roc_curves, plot_embedding_pca,
             plot_classification_demo, plot_noise_robustness, plot_qubit_scaling,
             plot_bloch_spheres, plot_entanglement_map,
+            plot_hardware_noise_robustness,
         )
         import pandas as pd
 
@@ -735,10 +757,95 @@ if train_button:
                 "Values averaged over up to 8 validation events per class."
             )
 
+        # ── 3J: Hardware noise simulation (Qiskit Aer, optional) ──────────
+        if run_hw_noise:
+            with s3j_ph.container():
+                st.subheader("3J — Hardware Noise Robustness: Qiskit Aer Study")
+                st.markdown(
+                    "The trained PQC is **reconstructed in Qiskit** (same RX angle encoding, "
+                    "same Rot+CNOT-ring ansatz, same ⟨Z₀⟩ measurement) and executed "
+                    "through Qiskit Aer's shot-based simulator at four hardware noise levels:\n\n"
+                    "| Level | 1Q gate error | 2Q (CX) error | Readout error |\n"
+                    "|---|---|---|---|\n"
+                    "| **Ideal** | 0% | 0% | 0% |\n"
+                    "| **Light** | 0.1% | 1.0% | 1.0% |\n"
+                    "| **Manila-calibr.** | 0.15% | 1.2% | 2.0% |\n"
+                    "| **2× Manila** | 0.30% | 2.4% | 4.0% |\n\n"
+                    "IBM Manila parameters from public calibration reports (ibm_manila, "
+                    "5-qubit Falcon r5, 2022–2023). The classical CNN pre-processing is "
+                    "noise-free; only the 4-qubit quantum circuit is noisy. "
+                    "**No retraining** — this is pure inference transfer."
+                )
+
+                hw_prog = st.progress(0.0, text="Building Qiskit circuits…")
+
+                def _hw_cb(frac, msg):
+                    hw_prog.progress(float(frac), text=msg)
+
+                from qiskit_noise import run_hardware_noise_sweep
+                with st.spinner("Running Qiskit Aer noise sweep (4 levels × validation set)…"):
+                    qiskit_results = run_hardware_noise_sweep(
+                        hqnn_model, X_val, y_val,
+                        shots=2048,
+                        progress_callback=_hw_cb,
+                    )
+                hw_prog.progress(1.0, text="Hardware noise sweep complete!")
+
+                fig_hw = plot_hardware_noise_robustness(
+                    qiskit_results,
+                    hqnn_clean_acc=hqnn_acc,
+                    cnn_clean_acc=cnn_acc,
+                    hqnn_pixel_noise_accs=hqnn_noise_accs,
+                    pixel_noise_levels=noise_levels,
+                )
+                st.pyplot(fig_hw)
+                plt.close(fig_hw)
+
+                # Summary table
+                hw_rows = [
+                    {
+                        "Noise level":    lbl,
+                        "Accuracy":       f"{qiskit_results[lbl]['accuracy']*100:.1f}%",
+                        "AUC-ROC":        f"{qiskit_results[lbl]['auc']:.3f}",
+                        "Acc drop vs ideal": f"{(qiskit_results['Ideal']['accuracy'] - qiskit_results[lbl]['accuracy'])*100:+.1f}pp",
+                    }
+                    for lbl in qiskit_results
+                ]
+                st.dataframe(
+                    pd.DataFrame(hw_rows), use_container_width=True, hide_index=True
+                )
+
+                mn = qiskit_results.get("Manila-calibr.", {})
+                ideal = qiskit_results.get("Ideal", {})
+                hw1, hw2, hw3 = st.columns(3)
+                hw1.metric(
+                    "Ideal (Qiskit)",
+                    f"{ideal.get('accuracy', 0)*100:.1f}%",
+                    delta=f"{(ideal.get('accuracy', 0) - hqnn_acc)*100:+.1f}% vs PL clean",
+                )
+                hw2.metric(
+                    "Manila-calibrated",
+                    f"{mn.get('accuracy', 0)*100:.1f}%",
+                    delta=f"{(mn.get('accuracy', 0) - ideal.get('accuracy', 0))*100:+.1f}% vs ideal",
+                    delta_color="inverse",
+                )
+                hw3.metric(
+                    "AUC (Manila-cal.)",
+                    f"{mn.get('auc', 0):.3f}",
+                )
+
+                st.caption(
+                    "The small Ideal vs PennyLane discrepancy is shot noise (2048 shots). "
+                    "AUC < 0.5 at any noise level would mean the noisy circuit has inverted "
+                    "its predictions — a sign the gate-error rate exceeds the circuit's "
+                    "noise tolerance. For deeper discussion see the Future Work note in Section 4."
+                )
+
         st.success(
             "Experiment complete! All results are in Section 3 above. "
             "Scroll up to review confusion matrices, ROC curves, Bloch spheres, "
-            "and the entanglement heatmap."
+            "entanglement heatmap"
+            + (" and Qiskit hardware-noise study." if run_hw_noise else ".")
         )
         st.balloons()
 

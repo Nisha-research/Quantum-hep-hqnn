@@ -1,1 +1,2 @@
-- [PennyLane+Keras gradient bug](pennylane-keras-gradient-bug.md) — tf.map_fn+backprop kills gradients; fix is parameter-shift; KerasLayer removed in PL 0.45
+- [PennyLane+Keras gradient bug](pennylane-keras-gradient-bug.md) — parameter-shift+float64 weights required; KerasLayer removed in PL 0.45; both conditions must hold simultaneously
+- [Qiskit HEP inference](qiskit-hep-inference.md) — Rot→ZYZ decomp, ⟨Z₀⟩ from counts, transpile required in Qiskit 2.x, Manila noise params

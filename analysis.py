@@ -8,14 +8,15 @@ main.py can call them after training and embed the results in Streamlit.
 
 Functions
 ---------
-plot_confusion_matrices    — side-by-side CMs for HQNN and CNN
-plot_roc_curves            — overlay ROC / AUC for both models
-plot_embedding_pca         — PCA of the Dense(4, tanh) feature space
-plot_classification_demo   — per-event grid with prediction + confidence
-plot_noise_robustness      — accuracy vs Gaussian noise level
-plot_qubit_scaling         — loss / accuracy for 2, 4, 6 qubit circuits
-plot_bloch_spheres         — 3D Bloch sphere: signal vs noise qubit states
-plot_entanglement_map      — 4×4 quantum mutual information heatmap
+plot_confusion_matrices        — side-by-side CMs for HQNN and CNN
+plot_roc_curves                — overlay ROC / AUC for both models
+plot_embedding_pca             — PCA of the Dense(4, tanh) feature space
+plot_classification_demo       — per-event grid with prediction + confidence
+plot_noise_robustness          — accuracy vs Gaussian pixel noise level
+plot_qubit_scaling             — loss / accuracy for 2, 4, 6 qubit circuits
+plot_bloch_spheres             — 3D Bloch sphere: signal vs noise qubit states
+plot_entanglement_map          — 4×4 quantum mutual information heatmap
+plot_hardware_noise_robustness — Qiskit Aer hardware-noise accuracy vs baselines
 """
 
 import numpy as np
@@ -783,3 +784,167 @@ def plot_entanglement_map(
     )
     fig.tight_layout()
     return fig, mi_sig, mi_noise
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Hardware Noise Robustness — Qiskit Aer simulation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_hardware_noise_robustness(
+    qiskit_results: dict,
+    hqnn_clean_acc: float,
+    cnn_clean_acc: float,
+    hqnn_pixel_noise_accs: list[float] | None = None,
+    pixel_noise_levels: list[float] | None = None,
+) -> plt.Figure:
+    """
+    Three-panel comparison of quantum hardware noise vs clean baselines.
+
+    Panel 1 — Hardware noise accuracy degradation
+        Bar chart: HQNN accuracy at each Qiskit Aer noise level.
+        Horizontal dashed lines: clean HQNN (PennyLane) and clean CNN.
+        Shows how the trained PQC degrades as gate errors increase.
+
+    Panel 2 — AUC under hardware noise
+        Line plot of AUC-ROC at each noise level.
+        AUC < 0.5 means the noisy circuit is worse than random.
+
+    Panel 3 — Three-axis comparison table
+        Side-by-side bar for: clean HQNN, clean CNN, pixel-noisy HQNN
+        (σ=0.2), and Qiskit HQNN at Manila-calibrated level.
+        Answers the central question: "quantum noise vs input noise vs clean".
+
+    Parameters
+    ----------
+    qiskit_results         : output of qiskit_noise.run_hardware_noise_sweep
+    hqnn_clean_acc         : PennyLane HQNN accuracy on clean validation set
+    cnn_clean_acc          : Classical CNN accuracy on clean validation set
+    hqnn_pixel_noise_accs  : list of HQNN accuracies from plot_noise_robustness
+                             (indices match pixel_noise_levels)
+    pixel_noise_levels     : list of sigma values matching hqnn_pixel_noise_accs
+    """
+    from qiskit_noise import NOISE_LEVELS, _LEVEL_COLORS
+
+    labels   = list(qiskit_results.keys())
+    accs     = [qiskit_results[l]["accuracy"] for l in labels]
+    aucs     = [qiskit_results[l]["auc"]      for l in labels]
+    colors   = [_LEVEL_COLORS[l]              for l in labels]
+    x_pos    = np.arange(len(labels))
+
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+    ax_acc, ax_auc, ax_cmp = axes
+
+    # ── Panel 1: Accuracy vs noise level ──────────────────────────────────
+    bars = ax_acc.bar(x_pos, accs, color=colors, alpha=0.85, width=0.6, zorder=3)
+    for bar, acc in zip(bars, accs):
+        ax_acc.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.012,
+            f"{acc*100:.1f}%",
+            ha="center", va="bottom", fontsize=10, fontweight="bold",
+        )
+
+    ax_acc.axhline(hqnn_clean_acc, color=_HQNN_COLOR, ls="--", lw=2.0,
+                   label=f"HQNN clean (PL)  {hqnn_clean_acc*100:.1f}%", zorder=4)
+    ax_acc.axhline(cnn_clean_acc,  color=_CNN_COLOR,  ls=":",  lw=2.0,
+                   label=f"CNN  clean        {cnn_clean_acc*100:.1f}%",  zorder=4)
+    ax_acc.axhline(0.5, color="gray", ls=":", lw=1.0, alpha=0.6,
+                   label="Random baseline 50%", zorder=4)
+
+    ax_acc.set_xticks(x_pos)
+    ax_acc.set_xticklabels(labels, fontsize=9)
+    ax_acc.set_ylabel("Accuracy", fontsize=10)
+    ax_acc.set_ylim(0.3, 1.12)
+    ax_acc.set_title(
+        "Hardware Noise Accuracy Degradation\n(Qiskit Aer, 2048 shots per circuit)",
+        fontweight="bold", fontsize=10,
+    )
+    ax_acc.legend(fontsize=8, loc="lower left")
+    ax_acc.grid(alpha=0.25, axis="y", zorder=0)
+
+    # Shade the accuracy-drop region
+    ideal_acc = qiskit_results["Ideal"]["accuracy"]
+    ax_acc.fill_between(
+        [-0.4, len(labels) - 0.6],
+        [ideal_acc, ideal_acc],
+        [min(accs), min(accs)],
+        alpha=0.05, color="red", zorder=1,
+    )
+
+    # ── Panel 2: AUC vs noise level ───────────────────────────────────────
+    ax_auc.plot(x_pos, aucs, "o-", color="#9b59b6", lw=2.5, ms=9, zorder=3)
+    for xi, (lbl, auc_v) in enumerate(zip(labels, aucs)):
+        ax_auc.annotate(
+            f"{auc_v:.3f}",
+            (xi, auc_v),
+            textcoords="offset points", xytext=(0, 10),
+            ha="center", fontsize=9, fontweight="bold", color="#9b59b6",
+        )
+    ax_auc.axhline(0.5, color="gray", ls=":", lw=1.2, label="Random (AUC=0.5)")
+    ax_auc.set_xticks(x_pos)
+    ax_auc.set_xticklabels(labels, fontsize=9)
+    ax_auc.set_ylabel("AUC-ROC", fontsize=10)
+    ax_auc.set_ylim(0.3, 1.12)
+    ax_auc.set_title(
+        "AUC-ROC Under Hardware Noise\n(threshold-independent signal detection)",
+        fontweight="bold", fontsize=10,
+    )
+    ax_auc.legend(fontsize=8)
+    ax_auc.grid(alpha=0.25, zorder=0)
+
+    # ── Panel 3: Three-axis comparison ────────────────────────────────────
+    # Comparison points: clean HQNN, clean CNN, pixel-noise HQNN (σ=0.20),
+    # and Qiskit HQNN at Manila-calibrated level
+    cmp_labels, cmp_vals, cmp_cols = [], [], []
+
+    cmp_labels.append("HQNN\nclean (PL)")
+    cmp_vals.append(hqnn_clean_acc)
+    cmp_cols.append(_HQNN_COLOR)
+
+    cmp_labels.append("CNN\nclean")
+    cmp_vals.append(cnn_clean_acc)
+    cmp_cols.append(_CNN_COLOR)
+
+    if hqnn_pixel_noise_accs is not None and pixel_noise_levels is not None:
+        # Pick σ ≈ 0.20 as a representative "moderate" pixel noise point
+        target = 0.20
+        idx = int(np.argmin(np.abs(np.array(pixel_noise_levels) - target)))
+        cmp_labels.append(f"HQNN pixel\nnoise (σ={pixel_noise_levels[idx]:.2f})")
+        cmp_vals.append(hqnn_pixel_noise_accs[idx])
+        cmp_cols.append("#f39c12")
+
+    manila_acc = qiskit_results.get("Manila-calibr.", {}).get("accuracy", float("nan"))
+    cmp_labels.append("HQNN hw\n(Manila-cal.)")
+    cmp_vals.append(manila_acc)
+    cmp_cols.append(_LEVEL_COLORS["Manila-calibr."])
+
+    cmp_x = np.arange(len(cmp_labels))
+    cmp_bars = ax_cmp.bar(cmp_x, cmp_vals, color=cmp_cols, alpha=0.88, width=0.55, zorder=3)
+    for bar, val in zip(cmp_bars, cmp_vals):
+        if not np.isnan(val):
+            ax_cmp.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.012,
+                f"{val*100:.1f}%",
+                ha="center", va="bottom", fontsize=10, fontweight="bold",
+            )
+    ax_cmp.axhline(0.5, color="gray", ls=":", lw=1.0, alpha=0.6)
+    ax_cmp.set_xticks(cmp_x)
+    ax_cmp.set_xticklabels(cmp_labels, fontsize=9)
+    ax_cmp.set_ylabel("Accuracy", fontsize=10)
+    ax_cmp.set_ylim(0.3, 1.12)
+    ax_cmp.set_title(
+        "Three-Axis Comparison\n"
+        "Clean QNN vs CNN  |  Pixel noise  |  Hardware noise",
+        fontweight="bold", fontsize=10,
+    )
+    ax_cmp.grid(alpha=0.25, axis="y", zorder=0)
+
+    fig.suptitle(
+        "Qiskit Aer Hardware Noise Study — Trained PQC (no retraining) under IBM-calibrated gate errors\n"
+        "Left: accuracy degrades with noise  |  Centre: AUC degradation  |  "
+        "Right: three-axis comparison (clean / pixel-noise / hardware-noise)",
+        fontsize=9, y=1.03,
+    )
+    fig.tight_layout()
+    return fig
