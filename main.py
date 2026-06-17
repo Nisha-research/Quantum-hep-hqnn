@@ -292,9 +292,9 @@ if not train_button:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Section 4 — Engineering Report
+# Section 4 — Computational Architecture & Research Methodology
 # ─────────────────────────────────────────────────────────────────────────────
-st.header("📚 Section 4 — Engineering Report")
+st.header("📚 Section 4 — Computational Architecture & Research Methodology ")
 
 with st.expander("Read the full technical report", expanded=False):
     st.markdown(r"""
