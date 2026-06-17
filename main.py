@@ -35,7 +35,7 @@ def _load_modules():
 
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.title("⚛️ Quantum Machine Learning for High-Energy Physics")
+st.markdown("<span style='font-size:45px'>⚛️ HQCNN for Spatial Collision Event Diagonstics</span>", unsafe_allow_html=True)
 st.markdown(
     "<span style='font-size:17px'>**Final Year Project** — Hybrid Classical-Quantum Neural Network (HQNN) "
     "for classifying simulated CERN particle collision events using PennyLane + TensorFlow.</span>",
