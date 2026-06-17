@@ -16,7 +16,10 @@ Map through trained Dense(1,sigmoid) output layer:
   prob = sigmoid(w * z0 + b)   where w,b = model.get_layer("output").get_weights()
 
 ## Qiskit 2.x requirements
-- `transpile(circuits, backend, optimization_level=0)` is required before `backend.run()`
+- `transpile(circuits, backend, optimization_level=0, num_processes=1)` is required before `backend.run()`
+- **`num_processes=1` is mandatory on Replit**: Qiskit's default parallel transpiler spawns a
+  `ProcessPoolExecutor`; this crashes with `BrokenProcessPool` inside Streamlit's subprocess
+  environment. Single-process transpilation is fast enough for small circuits.
 - Noise model applied via `backend.run(tqcs, noise_model=nm, shots=N)`
 - `NoiseModel`, `depolarizing_error`, `ReadoutError` all in `qiskit_aer.noise`
 - For RX/RY/RZ single-qubit gates: `nm.add_all_qubit_quantum_error(err1, ["rx","ry","rz"])`

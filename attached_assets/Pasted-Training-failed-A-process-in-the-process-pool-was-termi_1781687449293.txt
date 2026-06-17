@@ -1,0 +1,41 @@
+Training failed: A process in the process pool was terminated abruptly while the future was running or pending.
+
+BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+Traceback:
+File "/home/runner/workspace/main.py", line 787, in <module>
+    qiskit_results = run_hardware_noise_sweep(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/qiskit_noise.py", line 208, in run_hardware_noise_sweep
+    tqcs = transpile(circuits, backend, optimization_level=0)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/compiler/transpiler.py", line 298, in transpile
+    out_circuits = pm.run(circuits, callback=callback, num_processes=num_processes)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/transpiler/passmanager.py", line 419, in run
+    return super().run(circuits, output_name, callback, num_processes=num_processes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/transpiler/passmanager.py", line 456, in wrapper
+    return meth(*meth_args, **meth_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/transpiler/passmanager.py", line 196, in run
+    return super().run(
+           ^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/passmanager/passmanager.py", line 253, in run
+    return parallel_map(
+           ^^^^^^^^^^^^^
+File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/qiskit/utils/parallel.py", line 316, in parallel_map
+    return list(executor.map(_task_wrapper, work_items))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14/lib/python3.11/concurrent/futures/process.py", line 620, in _chain_from_iterable_of_lists
+    for element in iterable:
+File "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14/lib/python3.11/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14/lib/python3.11/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+File "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14/lib/python3.11/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+File "/nix/store/6334pjf6w2q623rgvwi499qaiym1p6yv-python3-3.11.14/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception

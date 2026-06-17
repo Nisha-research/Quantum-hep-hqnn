@@ -204,8 +204,12 @@ def run_hardware_noise_sweep(
     ]
 
     backend = AerSimulator()
-    # Transpile once — Qiskit 2.x requires transpilation before backend.run()
-    tqcs = transpile(circuits, backend, optimization_level=0)
+    # Transpile once — Qiskit 2.x requires transpilation before backend.run().
+    # num_processes=1 is mandatory in Replit: Qiskit's default parallel transpiler
+    # spawns a ProcessPoolExecutor, which crashes inside Streamlit's subprocess
+    # environment ("BrokenProcessPool").  Single-process transpilation is fast
+    # enough for circuits this size.
+    tqcs = transpile(circuits, backend, optimization_level=0, num_processes=1)
 
     results: dict[str, dict] = {}
     n_levels = len(NOISE_LEVELS)
