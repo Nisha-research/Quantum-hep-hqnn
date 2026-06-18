@@ -27,13 +27,15 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* Hide account/metadata elements only — keeps sidebar toggle and print intact */
 #MainMenu {visibility: hidden !important;}
-header {visibility: hidden !important;}
 footer {visibility: hidden !important;}
-[data-testid="stToolbar"] {visibility: hidden !important;}
 [data-testid="stDecoration"] {display: none !important;}
 [data-testid="stDeployButton"] {display: none !important;}
 .stAppDeployButton {display: none !important;}
+[data-testid="stToolbarActions"] {display: none !important;}
+/* Keep the sidebar collapse/expand button always clickable */
+[data-testid="collapsedControl"] {visibility: visible !important; display: flex !important;}
 </style>
 """, unsafe_allow_html=True)
 
