@@ -25,20 +25,6 @@ st.set_page_config(
     menu_items={"About": "Final Year Project — Hybrid QNN for CERN event classification"},
 )
 
-st.markdown("""
-<style>
-/* Hide account/metadata elements only — keeps sidebar toggle and print intact */
-#MainMenu {visibility: hidden !important;}
-footer {visibility: hidden !important;}
-[data-testid="stDecoration"] {display: none !important;}
-[data-testid="stDeployButton"] {display: none !important;}
-.stAppDeployButton {display: none !important;}
-[data-testid="stToolbarActions"] {display: none !important;}
-/* Keep the sidebar collapse/expand button always clickable */
-[data-testid="collapsedControl"] {visibility: visible !important; display: flex !important;}
-</style>
-""", unsafe_allow_html=True)
-
 
 # ── Lazy-load heavy modules once, cached across reruns ───────────────────────
 @st.cache_resource(show_spinner=False)
@@ -811,16 +797,6 @@ if train_button:
                 "Von Neumann entropy S = 0 → qubit is in a pure product state (no entanglement). "
                 "S = 1 → maximally entangled with the register. "
                 "Values averaged over up to 8 validation events per class."
-            )
-            st.info(
-                "**INSIGHT:** Signal events (CLASS 0) exhibit near-zero entanglement "
-                "(S < 0.025 bits per qubit), indicating the quantum circuit compresses "
-                "helical tracks into product states before measurement. Conversely, "
-                "background events (CLASS 1) generate higher per-qubit entanglement "
-                "(S ≈ 0.15 bits), suggesting the circuit exploits quantum correlations "
-                "to discriminate noisy deposits. This asymmetry validates the quantum "
-                "circuit's utility: signal classification requires minimal quantum "
-                "resources, while noise rejection leverages entanglement."
             )
 
         st.success(
