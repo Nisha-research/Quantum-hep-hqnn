@@ -11,6 +11,7 @@ Sections
   3. Benchmarks     — table, confusion matrices, ROC, classification demo,
                       embedding PCA, noise robustness, qubit scaling
   4. Report         — technical engineering report
+  5. Interactive Demo — live HQNN vs CNN classifier on generated events
 """
 
 import matplotlib.pyplot as plt
@@ -828,6 +829,10 @@ if train_button:
                 "in classical ML and validates the circuit's learned efficiency."
             )
 
+        # ── Persist models for interactive demo (Section 5) ──────────────
+        st.session_state["hqnn_model"] = hqnn_model
+        st.session_state["cnn_model"]  = cnn_model
+
         st.success(
             "Experiment complete! All results are in Section 3 above. "
             "Scroll up to review confusion matrices, ROC curves, Bloch spheres, "
@@ -838,3 +843,148 @@ if train_button:
     except Exception as exc:
         st.error(f"Training failed: {exc}")
         st.exception(exc)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section 5 — Interactive Collision Event Classifier Demo
+# ─────────────────────────────────────────────────────────────────────────────
+st.divider()
+st.header("🎮 Section 5 — Interactive Collision Event Classifier")
+st.markdown(
+    "Generate a synthetic detector event on demand and watch **both models classify it in real time**. "
+    "No retraining — pure inference on the trained weights. Train the model in Section 2 first to unlock."
+)
+
+_hqnn = st.session_state.get("hqnn_model")
+_cnn  = st.session_state.get("cnn_model")
+
+if _hqnn is None or _cnn is None:
+    st.info("⚠️ Train the model first (Section 2 — click **🚀 Train Model**) to unlock the interactive demo.")
+else:
+    _, _sample_fn, _ = _load_modules()
+
+    demo_col, ctrl_col = st.columns([2, 1])
+
+    with ctrl_col:
+        st.subheader("Event Generator")
+        event_type = st.radio(
+            "Event type to generate",
+            ["⚛️ Signal (Particle Track)", "❌ Background Noise", "🎲 Random (surprise me!)"],
+            index=2,
+        )
+        demo_seed = st.number_input(
+            "Random seed", min_value=0, max_value=9999, value=42, step=1,
+            help="Change seed to get a different event of the same type."
+        )
+        run_demo = st.button("⚡ Classify Event", type="primary", use_container_width=True)
+
+    with demo_col:
+        if run_demo or "demo_result" in st.session_state:
+            if run_demo:
+                if "Signal" in event_type:
+                    true_label = 0
+                elif "Background" in event_type:
+                    true_label = 1
+                else:
+                    true_label = int(np.random.default_rng(int(demo_seed)).integers(0, 2))
+
+                img    = _sample_fn(label=true_label, seed=int(demo_seed))
+                X_demo = img[np.newaxis, ..., np.newaxis].astype(np.float32)
+
+                hqnn_score = float(_hqnn.predict(X_demo, verbose=0).flatten()[0])
+                cnn_score  = float(_cnn.predict(X_demo, verbose=0).flatten()[0])
+
+                st.session_state["demo_result"] = {
+                    "img":        img,
+                    "true_label": true_label,
+                    "hqnn_score": hqnn_score,
+                    "cnn_score":  cnn_score,
+                    "seed":       int(demo_seed),
+                }
+
+            res        = st.session_state["demo_result"]
+            true_label = res["true_label"]
+            CLASS_COLORS = {0: "#00ff88", 1: "#ff4444"}
+            CLASS_LABELS = {0: "⚛️ Signal (Particle Track)", 1: "❌ Background Noise (Detector Hits)"}
+
+            fig_d, ax_d = plt.subplots(figsize=(4, 4), facecolor="#0e1117")
+            ax_d.imshow(res["img"], cmap="inferno", vmin=0, vmax=1)
+            ax_d.set_xticks([]); ax_d.set_yticks([])
+            tc = CLASS_COLORS[true_label]
+            ax_d.set_title(
+                f"True class: {CLASS_LABELS[true_label]}",
+                color=tc, fontsize=9, fontweight="bold", pad=8,
+            )
+            for sp in ax_d.spines.values():
+                sp.set_edgecolor(tc); sp.set_linewidth(2.5)
+            fig_d.tight_layout()
+            st.pyplot(fig_d)
+            plt.close(fig_d)
+
+    if "demo_result" in st.session_state:
+        res        = st.session_state["demo_result"]
+        true_label = res["true_label"]
+        hqnn_score = res["hqnn_score"]
+        cnn_score  = res["cnn_score"]
+        hqnn_pred  = 1 if hqnn_score > 0.5 else 0
+        cnn_pred   = 1 if cnn_score  > 0.5 else 0
+        CLASS_LABELS = {0: "⚛️ Signal (Particle Track)", 1: "❌ Background Noise (Detector Hits)"}
+
+        st.subheader("Model Predictions")
+        r1, r2 = st.columns(2)
+        for col, name, score, pred, icon in [
+            (r1, "HQNN",          hqnn_score, hqnn_pred, "⚛️"),
+            (r2, "Classical CNN",  cnn_score,  cnn_pred,  "🖥️"),
+        ]:
+            correct  = pred == true_label
+            conf     = score if pred == 1 else 1 - score
+            with col:
+                st.markdown(f"**{icon} {name}**")
+                st.markdown(
+                    f"Prediction: **{CLASS_LABELS[pred]}**  "
+                    f"{'✅ Correct' if correct else '❌ Wrong'}"
+                )
+                st.progress(conf, text=f"Confidence: {conf*100:.1f}%")
+                st.metric(
+                    "Raw sigmoid output",
+                    f"{score:.4f}",
+                    delta=f"{'> 0.5 → Noise' if score > 0.5 else '≤ 0.5 → Signal'}",
+                    delta_color="off",
+                )
+
+        if hqnn_pred == cnn_pred:
+            st.success(f"✅ Both models agree: **{CLASS_LABELS[hqnn_pred]}**")
+        else:
+            st.warning(
+                f"⚠️ Models disagree — HQNN predicts **{CLASS_LABELS[hqnn_pred]}**, "
+                f"CNN predicts **{CLASS_LABELS[cnn_pred]}**. "
+                "This event lies near the decision boundary."
+            )
+
+        st.subheader("Physics Explanation")
+        if true_label == 0:
+            st.info(
+                "**⚛️ Signal Event — Helicoidal Particle Track**\n\n"
+                "This event simulates a charged particle (e⁻, μ, or π) produced at "
+                "the **pp interaction vertex** (detector centre). The solenoidal magnetic "
+                "field bends it into a **helical arc** — a curved sequence of spatially "
+                "connected hits. The CNN pre-processor extracts curvature features "
+                "(784 → 4 dims); the PQC encodes them as qubit rotations (RX gates) and "
+                "applies the CNOT-ring ansatz to exploit quantum correlations. "
+                "**Signal events generate near-zero entanglement (S < 0.025 bits)** — "
+                "the circuit compresses the helical track into a product state, "
+                "concentrating discriminating power at the measured qubit ⟨Z₀⟩."
+            )
+        else:
+            st.warning(
+                "**❌ Background Event — Random Detector Deposits**\n\n"
+                "This event simulates uncorrelated energy deposits from secondary "
+                "scattering, pile-up, or electronic noise across the 28×28 detector "
+                "plane. Hits are **randomly distributed with no spatial coherence** — "
+                "no origin point, no curvature, no connected path. "
+                "The CNN embedding finds no curvature signal; the 4-dim vector lands "
+                "in a different region of quantum feature space. "
+                "**Background events generate higher entanglement (S ≈ 0.15 bits)** — "
+                "the circuit exploits Q1–Q3 correlations for noise rejection, with "
+                "qubits 1 and 3 reaching near-maximal entanglement (~0.96 bits)."
+            )
