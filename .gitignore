@@ -47,3 +47,4 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+ibmq_config.py
