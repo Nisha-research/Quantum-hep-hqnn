@@ -453,7 +453,7 @@ Other future directions:
 
 All code, data generation scripts, trained model weights, and Jupyter notebooks
 are available at:
-**https://github.com/choudharinisha0/quantum-hep-hqnn**
+**https://github.com/Nisha-research/quantum-hep-hqnn**
 
 Results are fully reproducible with PennyLane ≥ 0.45, TensorFlow ≥ 2.13, and
 Qiskit ≥ 1.0 using the hyperparameters listed in Section 1. The trained HQNN
