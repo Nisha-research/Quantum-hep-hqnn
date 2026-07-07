@@ -7,7 +7,7 @@
 
 ## Overview
 
-This final-year BSc project demonstrates:
+This final-year BSc Computer Science project demonstrates:
 - ⚛️ **Quantum Computing**: 4-qubit variational circuit with PennyLane
 - 🔬 **High-Energy Physics**: CERN TrackML-inspired particle classification
 - 🤖 **Hybrid Architecture**: Classical CNN + quantum classifier
@@ -96,7 +96,7 @@ MIT License
 
 ## Author
 
-**Nisha Choudhary** - Final-Year BSc Project (2024-2025)
+**Nisha Choudhary** - Final-Year BSc Computer Science Project (2026)
 
 GitHub: [@Nisha-research](https://github.com/Nisha-research)
 
