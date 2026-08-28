@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "on_failure"
+startCommand = "streamlit run main.py --server.port=$PORT --server.address=0.0.0.0 --logger.level=error"
