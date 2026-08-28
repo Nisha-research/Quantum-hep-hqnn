@@ -1,0 +1,20 @@
+[phases.setup]
+# Minimal system dependencies for Railway free tier
+aptPkgs = [
+  "libatlas-base-dev",
+  "libblas-dev",
+  "liblapack-dev",
+  "gfortran",
+  "freetype-config",
+  "pkg-config"
+]
+
+[phases.build]
+# Optimized build for free tier - reduce compile time
+cmds = [
+  "pip install --upgrade pip setuptools wheel --quiet",
+  "pip install --no-cache-dir -r requirements.txt"
+]
+
+[phases.runtime]
+shell = "/bin/bash"
