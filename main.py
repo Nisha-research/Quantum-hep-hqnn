@@ -431,15 +431,19 @@ Both models are trained on **identical** splits from seed 42. Metrics:
 
 ### 7. Future Work: Hardware Validation & Scaling
 
-Phase 1 (real IBM Quantum hardware deployment) is now actively pursued as part of
-this project's publication phase — circuits have been submitted and results are
-pending 1–24 hours in the IBM Quantum queue (see GitHub, `hardware_results/`).
-Phase 2 (end-to-end training under noise) is scoped below.
+Real IBM Quantum hardware validation is scoped as future work rather than
+an active workstream. Circuit preparation and backend authentication are
+implemented and tested (see `submit_to_ibm.py`), but job submission needs
+an update to Qiskit Runtime's current primitives API before it can run —
+deliberately deprioritized here in favor of completing the simulator-based
+pipeline and analysis suite in this phase.
 
 | Phase | Description | Status |
 |---|---|---|
-| **Phase 1 (Real Hardware)** | IBM Quantum hardware deployment — circuits submitted, results pending 1–24 hours | 🔄 In progress |
-| **Phase 2** | End-to-end training under noise; hardware-aware gradient estimation | Scoped (future) |
+| **Phase 1 (Simulator pipeline)** | Data generation, hybrid model, training, full benchmark suite | ✅ Complete |
+| **Phase 2 (Real Hardware)** | IBM Quantum hardware validation — auth/circuit-prep done, job submission needs a Runtime API update | 🔭 Future scope |
+| **Phase 3 (Statistical rigor)** | k-fold cross-validation, multi-seed qubit-scaling sweep, gradient-variance measurement for barren plateaus | 🔭 Future scope |
+| **Phase 4 (Scaling)** | Harder/non-saturating synthetic dataset, larger sample sizes, amplitude encoding, deeper ansatz with error mitigation | 🔭 Future scope |
 
 Other future directions:
 - **Amplitude encoding** to leverage full 2ⁿ-dimensional Hilbert space
