@@ -822,15 +822,18 @@ if train_button:
                 "circuit's utility: signal classification requires minimal quantum "
                 "resources, while noise rejection leverages entanglement."
             )
+            diag_sig = np.diag(mi_sig)
+            diag_noise = np.diag(mi_noise)
+            high_q = int(np.argmax(diag_noise))
+            low_q = int(np.argmin(diag_noise))
+
             st.success(
-                "**CIRCUIT DISCOVERY:** The circuit exhibits a striking bimodal entanglement "
-                "structure — qubits 1 and 3 reach near-maximal entanglement (~0.96 bits, "
-                "saturating the single-qubit Shannon limit), while qubits 0 and 2 remain "
-                "in pure product states (S ≈ 0.000). This selective activation pattern "
-                "suggests the circuit has learned to concentrate quantum resources on "
-                "specific qubit pairs (Q1–Q3 ring interaction) for discrimination, leaving "
-                "Q0 and Q2 as classical channels. This mirrors dimensionality reduction "
-                "in classical ML and validates the circuit's learned efficiency."
+                f"**CIRCUIT DISCOVERY:** In this run, qubit {high_q} shows the highest "
+                f"entanglement on background events (S = {diag_noise[high_q]:.3f} bits), "
+                f"while qubit {low_q} stays closest to a product state "
+                f"(S = {diag_noise[low_q]:.3f} bits). This pattern reflects the current "
+                f"trained circuit's learned resource allocation — note it is run-dependent; "
+                f"rerun training to see whether the same qubits are selected across seeds."
             )
 
         # ── Persist models for interactive demo (Section 5) ──────────────
